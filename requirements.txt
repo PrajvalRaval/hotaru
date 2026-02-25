@@ -1,0 +1,13 @@
+# Requirements for Hotaru (WhisperX + Ollama)
+git+https://github.com/m-bain/whisperX.git  # High-accuracy transcription & alignment
+ollama          # Python client for Ollama
+streamlit       # GUI framework
+moviepy         # Video/Audio processing
+srt             # SRT file generation
+torch           # Required for whisperx
+torchvision
+torchaudio
+pandas          # Required for some whisperx operations
+python-dotenv   # Environment variables
+psutil          # Hardware monitoring (CPU/RAM)
+nvidia-ml-py    # GPU monitoring (replaces pynvml)
