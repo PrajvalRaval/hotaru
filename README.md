@@ -1,79 +1,86 @@
-# 🏯 Hotaru (蛍)
-### Precision Japanese-to-English Subtitling. Powered by Local AI.
+# 🏯 Hotaru (蛍) — Professional Japanese-to-English Anime Subtitling Engine
 
-[![Python](https://img.shields.io/badge/Python-3.10+-00bfa5?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Ollama](https://img.shields.io/badge/Ollama-LLM-teal?style=for-the-badge&logo=ollama)](https://ollama.com/)
-[![WhisperX](https://img.shields.io/badge/WhisperX-ASR-00bfa5?style=for-the-badge)](https://github.com/m-bain/whisperX)
-[![License: MIT](https://img.shields.io/badge/License-MIT-00bfa5?style=for-the-badge)](LICENSE)
+![Hotaru Dashboard - AI Anime Subtitle Generator](Screenshot.png)
 
-**Hotaru** is a high-performance, locally-hosted AI pipeline designed to generate professional-grade English subtitles for Japanese anime. By bridging the gap between frame-perfect audio alignment (**WhisperX**) and natural, idiomatic dialogue translation (**Ollama/Qwen3**), Hotaru delivers fan-sub quality at AI speed.
+### 🚀 High-Performance Local AI Pipeline for Precision Subtitling
 
----
+[![Python 3.13+](https://img.shields.io/badge/Python-3.13+-00bfa5?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Ollama LLM](https://img.shields.io/badge/Ollama-256K_Context-teal?style=for-the-badge&logo=ollama)](https://ollama.com/)
+[![WhisperX ASR](https://img.shields.io/badge/WhisperX-Phoneme_Alignment-00bfa5?style=for-the-badge)](https://github.com/m-bain/whisperX)
+[![GPU Accelerated](https://img.shields.io/badge/RTX_4090-Optimized-orange?style=for-the-badge&logo=nvidia)](https://www.nvidia.com/)
 
-## 🚀 Why Hotaru?
-
-Stop waiting for fan-subs or settling for literal, "robotic" official translations. Hotaru gives you the power to create beautiful, context-aware subtitles on your own hardware.
-
-### ✨ Key Features
-*   **🎯 Word-Level Precision:** Powered by WhisperX phoneme alignment for frame-perfect subtitle timing that never drifts.
-*   **🌎 Natural Dialogue:** Leveraging Ollama (Qwen3:30b optimized) to adapt Japanese idioms, honorifics, and context into punchy, natural English.
-*   **🎵 Smart Lyric Detection:** Automatic heuristic detection of Opening/Ending themes. Hotaru skips the "hallucination-heavy" song segments to keep your SRTs clean.
-*   **💾 Persistent Task Management:** A uTorrent-inspired dashboard that remembers your progress. Close the tab, refresh the page—your tasks stay queued and safe.
-*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an adaptive task tray for power users who need to see every log and VRAM fluctuation.
-*   **☢️ Nuclear VRAM Reset:** Advanced memory management designed for 30B+ parameter models on consumer GPUs (optimized for RTX 3090/4090).
+**Hotaru** is a high-accuracy, locally-hosted AI subtitling tool designed to transform raw Japanese anime into professional-grade English subs. By bridging the gap between frame-perfect audio alignment (**WhisperX**) and context-aware dialogue translation (**Ollama/Qwen3**), Hotaru delivers "fansub quality" at machine speed without ever leaving your hardware.
 
 ---
 
-## 🎨 Sleek UI/UX
-Hotaru features a professional **Teal-Dark Aesthetic** designed for long-session productivity:
-*   **Fixed Sidebar:** Instant access to System Status, Transcription settings, and Ollama configuration.
-*   **Adaptive Task Tray:** A docked, collapsible log console that moves with your sidebar.
-*   **One-Click Preview:** View and edit your generated SRTs directly in the browser before downloading.
+## ✨ Key Features
+
+*   **🎯 Word-Level Precision:** Powered by **WhisperX phoneme alignment** for frame-perfect subtitle timing that never drifts, even during rapid-fire dialogue or overlaps.
+*   **🌎 Two-Pass Localization:**
+    *   **Pass 1 (Specialist):** Context-aware translation that recovers dropped subjects and preserves honorifics.
+    *   **Pass 2 (Grammarian):** Refines punctuation, capitalization, and flow while "stitching" together pre-split chunks into a professional script.
+*   **✂️ Hybrid Resegmentation:** Intelligent segment splitting based on **silence gaps (>1.0s)**, punctuation, and strict professional constraints (**Max 42 characters, Max 2 lines**).
+*   **📐 Custom Alignment Models:** Full support for specifying specialized Hugging Face model IDs (e.g., `jonatasgrosman/wav2vec2-large-xlsr-53-japanese`) for superior word-level timing.
+*   **💾 Persistent Task Management:** A **uTorrent-inspired dashboard** that persists state to disk. Close your browser, refresh the page, or restart the app—your translation queue and progress stay exactly where you left them.
+*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an adaptive task tray for power users. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a docked, live-updating console.
+*   **☢️ Nuclear VRAM/RAM Reset:** Advanced memory orchestration designed for **30B+ parameter models** on consumer GPUs. Hotaru aggressively purges both GPU and System memory between phases.
 
 ---
 
-## 🛠️ Quick Start
+## ⚡ Technical Optimizations
+
+### 🚀 Professional Formatting Constraints
+Configure `Max Width` and `Max Lines` directly from the UI. Hotaru's hybrid splitter ensures that Japanese text is re-segmented *before* translation, resulting in English dialogue that fits perfectly within Netflix-standard subtitle boundaries.
+
+### ⚖️ Dynamic Translation Tolerance
+Includes a configurable **Percentage-Based Tolerance** slider. Control exactly how many missing or malformed lines are acceptable before the engine triggers an automatic retry, ensuring robust results even with experimental models.
+
+### 🛡️ System RAM Guard
+The engine actively monitors host RAM availability. If system memory drops below 1.5GB during heavy model switching, Hotaru pauses and triggers **Aggressive Garbage Collection** to prevent the Linux OOM killer from terminating the process.
+
+---
+
+## 🛠️ Installation & Setup
 
 ### 1. Prerequisites
-*   **NVIDIA GPU:** (8GB+ VRAM recommended, 24GB+ for 30B models)
-*   **Python:** 3.10 or higher
-*   **Ollama:** Installed and running (`ollama serve`)
+*   **Hardware:** NVIDIA GPU (24GB VRAM recommended for 30B+ models).
+*   **Backend:** [Ollama](https://ollama.com/) installed and running (`ollama serve`).
+*   **System:** `ffmpeg` installed on your host OS.
 
-### 2. Installation
+### 2. Quick Start
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/hotaru.git
 cd hotaru
 
-# Install dependencies (WhisperX requires ffmpeg)
+# Install Python requirements
 pip install -r requirements.txt
-```
 
-### 3. Launch
-```bash
+# Launch the dashboard (using the venv streamlit)
+source venv/bin/activate
 streamlit run app.py
 ```
 
 ---
 
-## 🧠 The Pipeline
-1.  **Transcribe:** Japanese audio to text via WhisperX.
-2.  **Align:** Phoneme-level timestamp refinement.
-3.  **Smart Split:** Logic-based segmenting at punctuation and silence gaps.
-4.  **Reset:** Pre-emptive VRAM purging to clear the way for the LLM.
-5.  **Translate:** Batch-processed LLM translation (25 lines per chunk).
-6.  **Smooth:** Post-processing to eliminate duplicate frames and flicker.
+## 🧠 The AI Pipeline
+1.  **Extract:** Automated high-fidelity audio extraction from MP4/MKV containers.
+2.  **ASR:** Japanese transcription via **WhisperX** with configurable **Chunk Size** and **Silero VAD**.
+3.  **Align:** Phoneme-level refinement using standard or custom **Wav2Vec2** models.
+4.  **Resegment:** Pre-translation splitting based on natural pauses and professional constraints.
+5.  **Translate:** Localization pass using **Anime Localization Specialist** persona.
+6.  **Smooth:** Final refinement pass using **Anime Script Editor and Grammarian** persona.
 
 ---
 
 ## 🔒 Privacy First
 No cloud APIs. No subscription fees. No data harvesting.
-Everything stays on your machine.
+**Everything stays on your machine.**
 
 ---
 
 ## 🤝 Contributing
-Hotaru is an evolving project. Feel free to open issues or submit PRs to improve the translation heuristics or VRAM management.
+Hotaru is an evolving project. Feel free to open issues or submit PRs to improve the translation heuristics, UI responsiveness, or VRAM management.
 
 ---
 

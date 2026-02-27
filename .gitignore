@@ -215,3 +215,4 @@ logs/*
 temp_*
 *.bak
 uploads/*
+models/*

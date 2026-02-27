@@ -1,12 +1,14 @@
 # Requirements for Hotaru (WhisperX + Ollama)
-git+https://github.com/m-bain/whisperX.git  # High-accuracy transcription & alignment
+whisperx        # High-accuracy transcription & alignment
 ollama          # Python client for Ollama
+pyannote-audio  # Required for speaker diarization
 streamlit       # GUI framework
 moviepy         # Video/Audio processing
 srt             # SRT file generation
-torch           # Required for whisperx
+torch>=2.10.0   # Support for torchcodec
 torchvision
 torchaudio
+torchcodec==0.10.0
 pandas          # Required for some whisperx operations
 python-dotenv   # Environment variables
 psutil          # Hardware monitoring (CPU/RAM)

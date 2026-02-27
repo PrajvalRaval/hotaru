@@ -7,39 +7,41 @@ To provide the highest quality Japanese-to-English subtitles for anime using a h
 
 ## 🛠️ Architectural Mandates
 
-### 1. VRAM & Resource Management
-- **Nuclear VRAM Reset:** Between transcription (WhisperX) and translation (Ollama), ALL heavy models MUST be deleted and `torch.cuda.empty_cache()` called multiple times. This is non-negotiable to support 30B+ parameters on consumer GPUs.
-- **Pre-emptive Unload:** Always ensure Ollama is unloaded (`keep_alive=0`) before starting WhisperX tasks to prevent OOM errors.
-- **Manual Purge:** The UI provides a "Purge Ollama VRAM" button in System Status for emergency memory recovery.
+### 1. Resource & Memory Orchestration
+- **Nuclear VRAM Reset:** Between transcription (WhisperX) and translation (Ollama), ALL heavy models MUST be explicitly deleted. Calls to `torch.cuda.empty_cache()` and `torch.cuda.ipc_collect()` must be performed to ensure a clean slate for the LLM.
+- **Fragmented UI Updates:** Global `st.rerun()` heartbeats are FORBIDDEN. All real-time telemetry (VRAM/RAM/Progress) MUST use `@st.fragment` to refresh isolated UI components, preventing script-wide re-execution and memory leaks.
 
 ### 2. Subtitle Timing & UI Dynamics
-- **Translate-then-Split:** Translate full original segments first to preserve English grammar, THEN split based on word-level timestamps.
-- **Anti-Flicker Logic:** 
-    - Minimum subtitle duration: **1.2s**.
-    - Minimum chunk size before allowed to split: **1.0s**.
-    - Collision detection must prevent overlapping timestamps.
-- **Smart Splitting:** Split segments only on punctuation (`。`, `！`, `？`) or silence gaps (`> 0.5s`).
+- **Start/Pause Toggle:** The task action button MUST toggle between **▶ (Start)** and **⏸ (Stop)** based on real-time task status.
+- **Instant Removal & Abort:** Clicking **Remove (🗑)** must trigger immediate UI removal and raise an `InterruptedError` in the engine thread via a `cancel_check` callback that monitors task existence, status, and the global `SHUTDOWN_EVENT`.
+- **Residue Cleanup:** Task removal MUST proactively delete both the source video from `uploads/` and any partial/full SRT output from `output/`.
+- **Native Timing:** Rely on WhisperX's native segmentation and alignment outputs without additional manual splitting or post-merging logic.
 
-### 3. Translation Quality (Ollama)
-- **Batching:** Use a `chunk_size` of **25** lines.
-- **Song Detection:** A heuristic `_is_likely_song` detects lyrics based on musical symbols (`♪`, `～`), text density, and vowel extensions. Detected songs are skipped (set to empty string) to prevent low-quality LLM hallucinations.
-- **Prompting:** Instructs Ollama to output an empty line for any remaining lyrics to keep the SRT clean.
-- **Cleaning:** Always strip `Line X:` prefixes and speaker labels from LLM output.
+### 3. Two-Pass Translation Architecture
+- **Pass 1: Initial Translation:** Sent in batches (or single batch) with Speaker IDs provided for context. Focuses on accuracy and honorific retention.
+- **Pass 2: The "Subber's Polish":** Sends the entire translated transcript back to the LLM. Focuses on resolving subject ambiguity, improving dialogue flow, and ensuring comfortable reading speeds.
+- **"No Chunking" Mode:** For 256K context models (Qwen3), support a toggle-based `chunk_size=0` mode that sends the entire transcript in one batch for better narrative consistency and a ~3x speed boost.
+- **Stable Batching:** When chunking is enabled, use a numerical input (default 25) instead of a slider to prevent rapid UI-state mutations.
+- **Dynamic Tolerance:** Use a **Percentage-Based Tolerance** slider (default 5%) to determine acceptable missing lines before triggering a retry.
+- **Verbose Telemetry:** Translation logs MUST include total character counts, estimated tokens, and detailed parsing results (matched vs unmatched lines).
+- **Audio-Level Skipping:** Rely solely on Silero VAD (Voice Activity Detection) during the transcription phase to skip non-speech segments, including opening/ending themes and background music.
 
-### 4. UI/UX Architecture (uTorrent + Proxmox Inspired)
-- **Sidebar:** Fixed at **336px**, non-collapsible. Contains grouped expanders for System, Transcription, Ollama, and Translation settings.
-- **Task List:** A row-based data-dense list showing ID, Size, Progress (animated bar), and detailed Stage (e.g., `🌎 Translating (1/11)`).
-- **Persistence:** All tasks and uploaded files are persisted in `uploads/` and `logs/tasks_state.json`. Refreshing the browser does not lose progress.
-- **System Tasks Tray:** A fixed, Proxmox-style status tray docked at the bottom of the main content area, aligned perfectly with the sidebar.
+### 4. Model Specifics (Anime-Whisper)
+- **Automatic Patching:** The `convert_anime_whisper.py` script MUST automatically patch the CTranslate2 `config.json` to use **128 Mel bins** (Whisper v3 requirement) and ensure all required preprocessor metadata is downloaded.
+
+### 5. Mandatory Syntax Check
+- **Zero-Tolerance for IndentationErrors:** After ANY modification to Python source files, the `./check_syntax.sh` script MUST be executed to verify structural integrity.
+- **Pre-Execution Check:** Never finish a task without confirming all files pass the syntax check.
 
 ## 📝 Engineering Standards
 
-### Logging & Warnings
-- **Full Transparency:** Capture all library warnings and errors in session-specific log files (`logs/hotaru_*.log`).
-- **Suppression:** Suppress non-fixable internal warnings (e.g., `torchaudio`, `nvidia-ml-py`).
-- **Live Updates:** Use `st.empty()` placeholders to push engine updates to the UI in real-time.
+### Logging & Thread Safety
+- **Context Attachment:** All background threads MUST use `add_script_run_ctx` to link to the Streamlit session context for safe UI interaction.
+- **Shutdown Handling:** Monitor a global `threading.Event()` for app shutdown to allow C++ extensions to unload gracefully, avoiding "terminate called without active exception" crashes.
+- **httpx Silencing:** Set `logging.getLogger("httpx").setLevel(logging.WARNING)` to prevent Ollama API spam.
+- **Cached Model Fetching:** Fetch Ollama models using a cached function with a **10s TTL**.
 
 ## ⚠️ Known Version Constraints
-- **torchcodec:** DO NOT install. It is currently incompatible with PyTorch 2.8.0 ABI.
-- **pynvml:** Removed in favor of `nvidia-ml-py` to resolve deprecation warnings.
+- **Streamlit >= 1.54.0:** Required for `@st.fragment` support.
+- **PyTorch Stack >= 2.10.0:** Required for `torchcodec` 0.10.0 compatibility.
 - **TF32:** Forced enable globally for RTX 3090/4090 performance.
