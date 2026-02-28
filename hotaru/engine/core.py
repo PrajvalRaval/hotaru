@@ -32,10 +32,10 @@ class TranscribeEngine:
         self.model_size = model_size
         self.translator = OllamaTranslator(host=ollama_host)
         
-        # VAD Config (Aggressive Initialization to prevent 30s blobs)
+        # VAD Config (Truly Aggressive Initialization to prevent 30s blobs)
         vad_options = {
-            "vad_onset": 0.500,
-            "vad_offset": 0.363
+            "vad_onset": 0.700,
+            "vad_offset": 0.650
         }
         
         self.model = whisperx.load_model(
@@ -131,13 +131,15 @@ class TranscribeEngine:
                 diarize_segments = self.diarize_model(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
 
-            # 4. Extract Segments and Hard-Wrap
-            log(f"📦 Extracting WhisperX segments (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
+            # 4. Enforce Character Density Limits
+            log(f"📦 Slicing alignment blocks (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
             segmented_ja = []
+            
             for seg in result["segments"]:
                 words = seg.get("words", [])
                 speaker = seg.get("speaker", "UNKNOWN")
                 
+                # If no word-level alignment, we have to pass the whole chunk
                 if not words:
                     if seg.get("text", "").strip():
                         segmented_ja.append({
@@ -148,7 +150,7 @@ class TranscribeEngine:
                         })
                     continue
                 
-                # Hard-wrap the subtitles based on character count rather than spaces
+                # Rebuild segments to strictly adhere to density limits using alignment data
                 current_buffer = []
                 current_len = 0
                 line_count = 1
@@ -163,6 +165,7 @@ class TranscribeEngine:
                             current_len = w_len
                             current_buffer.append(w)
                         else:
+                            # We hit the hard limit. Flush the buffer into a new subtitle block.
                             if current_buffer:
                                 s_start = current_buffer[0].get("start", seg["start"])
                                 s_end = current_buffer[-1].get("end", seg["end"])
