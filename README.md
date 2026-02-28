@@ -23,11 +23,19 @@ Stop waiting for fan-subs or settling for literal, "robotic" official translatio
 
 ---
 
+## 🧠 The AI Pipeline
+1.  **Isolate:** Vocal Isolation (Demucs) to strip BGM/SFX.
+2.  **Transcribe:** Japanese transcription via **WhisperX** with **0.50 VAD Onset**.
+3.  **Align:** Phoneme-level refinement using standard or custom **Wav2Vec2** models.
+4.  **Resegment:** Speaker-aware **Buffer-and-Flush** splitting based on natural pauses and density.
+5.  **Localize:** One-pass localization and polishing using the **Anime Localization Director** persona with MoE-optimized context linking and blind context inference.
+
+---
+
 ## ✨ Key Features
 
 *   **🎤 Vocal Isolation (Phase 0):** Integrated **Demucs (htdemucs)** to strip BGM and SFX. Feed pristine, voice-only tracks into WhisperX for 100% deterministic VAD and zero hallucinations.
 *   **🎯 Word-Level Precision:** Powered by **WhisperX phoneme alignment** for frame-perfect subtitle timing that never drifts.
-*   **👥 Speaker-Aware Timing:** Monitors speakers at the **word level**, ensuring Person B's text never "spoils" Person A's dialogue.
 *   **🌎 One-Pass Localization:**
     *   **Direct-to-Fansub:** Context-aware translation that recovers dropped subjects and preserves honorifics.
     *   **Blind Context Inference:** Leverages a **256K context window** to deduce speaker changes and maintain narrative continuity without relying on hardcoded speaker tags.
@@ -35,29 +43,6 @@ Stop waiting for fan-subs or settling for literal, "robotic" official translatio
     *   **Failsafe Parser:** Strict regex anchoring prevents the "Zip Desync Trap." If the LLM hallucinates and skips a line, it seamlessly falls back to Japanese, maintaining 100% frame-perfect subtitle alignment.
     *   **Smart Fallback:** Integrates dynamic chunk reduction (Divide & Conquer). If a token limit is exhausted, it automatically splits the workload to guarantee successful generation.
 *   **🎵 Automated Song Filtering:** Integrated **Heuristic Song Detection** and strict **VAD (0.50 Onset)** to skip musical themes.
-*   **💾 Persistent Task Management:** A **uTorrent-inspired dashboard** that persists state to disk. Close your browser, refresh the page, or restart the app—your translation queue and progress stay exactly where you left them.
-*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an independent task tray. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a live console.
-*   **☢️ Nuclear VRAM Reset:** Advanced memory orchestration between transcription and translation phases.
-
----
-
-## 🎨 Sleek UI/UX
-
-Hotaru features a professional **Teal-Dark Aesthetic** designed for long-session productivity:
-*   **Fixed Sidebar:** Instant access to System Status, Transcription settings, and Ollama configuration.
-*   **Adaptive Task Tray:** A docked, collapsible log console that moves with your sidebar.
-*   **One-Click Preview:** View and edit your generated SRTs directly in the browser before downloading.
-*   **Segmented Updates:** Truly independent UI fragments ensure hardware stats and logs update without flickering the task list.
-
----
-
-## ⚡ Technical Optimizations
-
-### 🚀 Segmented Architecture
-Hotaru is built as a modular package. The UI, Engine, and Common utilities are strictly decoupled to ensure high performance and zero WebSocket noise.
-
-### 🛡️ Resource Guard
-Actively monitors host RAM and VRAM availability, triggering aggressive garbage collection to prevent OOM termination.
 
 ---
 
@@ -83,12 +68,21 @@ streamlit run app.py
 
 ---
 
-## 🧠 The AI Pipeline
-1.  **Isolate:** Vocal Isolation (Demucs) to strip BGM/SFX.
-2.  **Transcribe:** Japanese transcription via **WhisperX** with **0.50 VAD Onset**.
-3.  **Align:** Phoneme-level refinement using standard or custom **Wav2Vec2** models.
-4.  **Resegment:** Speaker-aware **Buffer-and-Flush** splitting based on natural pauses and density.
-5.  **Localize:** One-pass localization and polishing using the **Anime Localization Director** persona with MoE-optimized context linking and blind context inference.
+## ⚡ Technical Optimizations
+
+### 🚀 Segmented Architecture
+Hotaru is built as a modular package. The UI, Engine, and Common utilities are strictly decoupled to ensure high performance and zero WebSocket noise.
+
+### 🛡️ Resource Guard
+Actively monitors host RAM and VRAM availability, triggering aggressive garbage collection to prevent OOM termination.
+
+---
+
+## 🎨 Sleek UI/UX
+
+Hotaru features a professional **Teal-Dark Aesthetic** designed for long-session productivity:
+*   **Sidebar:** Instant access to System Status, Transcription settings, and Ollama configuration.
+*   **One-Click Preview:** View and edit your generated SRTs directly in the browser before downloading.
 
 ---
 
@@ -96,5 +90,3 @@ streamlit run app.py
 No cloud APIs. No data harvesting. **Everything stays on your machine.**
 
 ---
-
-*“Subtitling isn't just about translation; it's about preserving the soul of the scene.”* — **Hotaru Team**
