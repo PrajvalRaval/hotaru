@@ -28,9 +28,9 @@ Stop waiting for fan-subs or settling for literal, "robotic" official translatio
 *   **🎤 Vocal Isolation (Phase 0):** Integrated **Demucs (htdemucs)** to strip BGM and SFX. Feed pristine, voice-only tracks into WhisperX for 100% deterministic VAD and zero hallucinations.
 *   **🎯 Word-Level Precision:** Powered by **WhisperX phoneme alignment** for frame-perfect subtitle timing that never drifts.
 *   **👥 Speaker-Aware Timing:** Monitors speakers at the **word level**, ensuring Person B's text never "spoils" Person A's dialogue.
-*   **🌎 Two-Pass Localization:**
-    *   **Pass 1 (Specialist):** Context-aware translation that recovers dropped subjects and preserves honorifics.
-    *   **Pass 2 (Director):** Refines punctuation and flow using a **256K context window** to maintain narrative continuity.
+*   **🌎 One-Pass Localization:**
+    *   **Direct-to-Fansub:** Context-aware translation that recovers dropped subjects and preserves honorifics.
+    *   **Blind Context Inference:** Leverages a **256K context window** to deduce speaker changes and maintain narrative continuity without relying on hardcoded speaker tags.
 *   **🎵 Automated Song Filtering:** Integrated **Heuristic Song Detection** and strict **VAD (0.50 Onset)** to skip musical themes.
 *   **💾 Persistent Task Management:** A **uTorrent-inspired dashboard** that persists state to disk. Close your browser, refresh the page, or restart the app—your translation queue and progress stay exactly where you left them.
 *   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an independent task tray. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a live console.

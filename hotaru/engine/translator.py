@@ -24,7 +24,7 @@ class OllamaTranslator:
 
         original_lines = [s["text"].strip() for s in segments]
         input_text = "\n".join([
-            f"Line {idx+1}: [{s['start']:.2f}s] [{s.get('speaker', 'UNKNOWN')}] [{s['text']}]" 
+            f"Line {idx+1}: {s['text']}" 
             for idx, s in enumerate(segments)
         ])
         
@@ -33,19 +33,31 @@ class OllamaTranslator:
             "You are an elite Anime Localization Director. Your objective is to translate and adapt Japanese anime dialogue into natural, cinematic English subtitles.\n\n"
             "### INPUT FORMAT\n"
             "You will receive a batch of chronologically ordered dialogue lines. "
-            "Format: `Line X: [TIMESTAMP] [ID] [JA_TEXT]`\n\n"
+            "Format: `Line [Index]: [JA_TEXT]`\n\n"
             "### CRITICAL RULES (THE CONSTITUTION)\n"
             "1. STRICT 1:1 MAPPING: You MUST output exactly ONE translated line for every single input line. "
-            "Merging, dropping, or adding extra lines is strictly forbidden.\n"
+            "Merging, dropping, or adding extra lines is strictly forbidden. The sequence numbers must match the input exactly.\n"
             "2. GRAMMAR STITCHING: A single sentence may be split across multiple lines due to audio pauses. "
             "Ensure the English flow connects across these breaks. Use ellipses (...) at the end of a line if the thought continues.\n"
-            "3. BLIND CONTEXT INFERENCE: Even if speaker IDs are generic, you MUST deduce speaker changes and subjects (I, You, He, She) using linguistic cues "
+            "3. BLIND CONTEXT INFERENCE: You do not have speaker tags. You MUST deduce speaker changes and subjects (I, You, He, She) using linguistic cues "
             "(e.g., 'ore' vs 'watashi', sentence-ending particles like '-ze' vs '-kashira', and politeness levels).\n"
-            "4. CHARACTER CONTINUITY: Track characters through the 256K context. If a character speaks roughly in Line 1, maintain that tone in Line 5.\n"
+            "4. CHARACTER CONTINUITY: Track characters through your context window. If a character speaks roughly in Line 1, maintain that tone if they speak again in Line 5.\n"
             "5. HONORIFICS & LOCALIZATION: Retain all honorifics (-san, -kun, -sama). Do not translate idioms literally; use culturally equivalent English phrases.\n\n"
             "### OUTPUT CONSTRAINTS (STRICT)\n"
-            "- FORMAT: 'Line X: [Polished Translation]'\n"
-            "- Output ONLY the localized English text. No original Japanese, no metadata, no introductions."
+            "- FORMAT: `Line [Index]: [Polished Translation]`\n"
+            "- Output ONLY the localized English text with its index. No original Japanese, no metadata, no introductions.\n"
+            "- DO NOT wrap your response in markdown code blocks (no backticks).\n\n"
+            "### EXAMPLE\n"
+            "Input:\n"
+            "Line 45: おい、待てよ！\n"
+            "Line 46: お前を絶対に...\n"
+            "Line 47: 許さないからな！\n"
+            "Line 48: ご、ごめんなさい！\n\n"
+            "Output:\n"
+            "Line 45: Hey, wait up!\n"
+            "Line 46: I'm absolutely...\n"
+            "Line 47: never going to forgive you!\n"
+            "Line 48: I-I'm so sorry!"
         )
         
         user_prompt = f"Localize the following anime script:\n\n{input_text}\n\nOutput:"
