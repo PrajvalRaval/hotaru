@@ -108,6 +108,16 @@ class TranscribeEngine:
             log(f"🗣️ Transcribing Japanese (VAD Onset: 0.50, Chunk: {whisper_chunk_size}s)...")
             result = self.model.transcribe(audio, batch_size=16, language="ja", chunk_size=whisper_chunk_size)
             check_abort()
+
+            # --- DEBUG EXPORT: RAW TRANSCRIPTION ---
+            try:
+                from hotaru.common.constants import OUTPUT_DIR
+                base_name = os.path.splitext(os.path.basename(video_path))[0]
+                raw_trans_path = os.path.join(OUTPUT_DIR, f"{base_name}_raw_transcription.srt")
+                generate_srt(result["segments"], raw_trans_path)
+                log(f"💾 Saved raw transcription: {os.path.basename(raw_trans_path)}")
+            except Exception as e:
+                logger.warning(f"Failed to save raw transcription debug SRT: {e}")
             
             # 1.5 Morphological Tokenization (Janome)
             # We insert spaces between grammatical boundaries so WhisperX can align to actual words.
@@ -124,6 +134,15 @@ class TranscribeEngine:
             model_a, metadata = whisperx.load_align_model(language_code="ja", device=self.device, model_name=align_model)
             result = whisperx.align(result["segments"], model_a, metadata, audio, self.device, return_char_alignments=False)
             check_abort()
+
+            # --- DEBUG EXPORT: RAW ALIGNMENT ---
+            try:
+                raw_align_path = os.path.join(OUTPUT_DIR, f"{base_name}_raw_alignment.srt")
+                # We use the raw aligned segments before timing offsets or smart-wrapping
+                generate_srt(result["segments"], raw_align_path)
+                log(f"💾 Saved raw alignment: {os.path.basename(raw_align_path)}")
+            except Exception as e:
+                logger.warning(f"Failed to save raw alignment debug SRT: {e}")
             
             if timing_offset != 0:
                 log(f"⏱️ Applying manual timing offset: {timing_offset:+.3f}s")
