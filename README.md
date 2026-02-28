@@ -72,6 +72,8 @@ git clone https://github.com/yourusername/hotaru.git
 cd hotaru
 
 # Launch the dashboard
+pip install -r requirements.txt
+
 source venv/bin/activate
 streamlit run app.py
 ```
