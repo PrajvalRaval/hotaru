@@ -131,74 +131,16 @@ class TranscribeEngine:
                 diarize_segments = self.diarize_model(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
 
-            # 4. Enforce Character Density Limits
-            log(f"📦 Slicing alignment blocks (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
+            # 4. Extract Segments
+            log("📦 Extracting WhisperX aligned segments...")
             segmented_ja = []
-            
             for seg in result["segments"]:
-                words = seg.get("words", [])
-                speaker = seg.get("speaker", "UNKNOWN")
-                
-                # If no word-level alignment, we have to pass the whole chunk
-                if not words:
-                    if seg.get("text", "").strip():
-                        segmented_ja.append({
-                            "start": seg["start"],
-                            "end": seg["end"],
-                            "text": seg["text"].strip(),
-                            "speaker": speaker
-                        })
-                    continue
-                
-                # Rebuild segments to strictly adhere to density limits using alignment data
-                current_buffer = []
-                current_len = 0
-                line_count = 1
-                
-                for w in words:
-                    w_text = w["word"].strip()
-                    w_len = len(w_text)
-                    
-                    if current_len + w_len > max_line_width:
-                        if line_count < max_line_count:
-                            line_count += 1
-                            current_len = w_len
-                            current_buffer.append(w)
-                        else:
-                            # We hit the hard limit. Flush the buffer into a new subtitle block.
-                            if current_buffer:
-                                s_start = current_buffer[0].get("start", seg["start"])
-                                s_end = current_buffer[-1].get("end", seg["end"])
-                                if s_start is None: s_start = seg["start"]
-                                if s_end is None: s_end = seg["end"]
-                                
-                                s_text = "".join([bw["word"] for bw in current_buffer])
-                                segmented_ja.append({
-                                    "start": s_start,
-                                    "end": s_end,
-                                    "text": s_text.strip(),
-                                    "speaker": speaker
-                                })
-                            current_buffer = [w]
-                            current_len = w_len
-                            line_count = 1
-                    else:
-                        current_len += w_len
-                        current_buffer.append(w)
-                
-                if current_buffer:
-                    s_start = current_buffer[0].get("start", seg["start"])
-                    s_end = current_buffer[-1].get("end", seg["end"])
-                    if s_start is None: s_start = seg["start"]
-                    if s_end is None: s_end = seg["end"]
-                    
-                    s_text = "".join([bw["word"] for bw in current_buffer])
-                    segmented_ja.append({
-                        "start": s_start,
-                        "end": s_end,
-                        "text": s_text.strip(),
-                        "speaker": speaker
-                    })
+                segmented_ja.append({
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "text": seg["text"].strip(),
+                    "speaker": seg.get("speaker", "UNKNOWN")
+                })
             check_abort()
 
             # 5. VRAM Reset
