@@ -108,111 +108,90 @@ class TranscribeEngine:
             except Exception as e:
                 logger.warning(f"Failed to save raw transcription debug SRT: {e}")
             
-            # 1.5 Morphological Tokenization (Janome)
-            # We insert spaces between grammatical boundaries so WhisperX can align to actual words.
-            log("🧪 Performing morphological tokenization for precision alignment...")
+            # 1.5 Morphological Chunking (Janome)
+            # We slice the long transcription segments into subtitle-sized chunks BEFORE alignment.
+            log(f"🧪 Performing morphological chunking (Max Width: {max_line_width})...")
+            chunked_segments = []
+            limit = max_line_width * max_line_count
+            
             for seg in result["segments"]:
-                tokens = self.tokenizer.tokenize(seg["text"])
-                seg["text"] = " ".join([t.surface for t in tokens])
+                tokens = list(self.tokenizer.tokenize(seg["text"]))
+                seg_text = seg["text"]
+                seg_start = seg["start"]
+                seg_end = seg["end"]
+                seg_dur = seg_end - seg_start
+                total_len = len(seg_text)
+                
+                if total_len == 0:
+                    chunked_segments.append(seg)
+                    continue
+                
+                current_tokens = []
+                current_len = 0
+                processed_len = 0
+                
+                for t in tokens:
+                    t_surface = t.surface
+                    if current_len + len(t_surface) > limit and current_tokens:
+                        c_start = seg_start + (processed_len - current_len) / total_len * seg_dur
+                        c_end = seg_start + processed_len / total_len * seg_dur
+                        chunked_segments.append({
+                            "start": c_start, "end": c_end,
+                            "text": " ".join([tk.surface for tk in current_tokens])
+                        })
+                        current_tokens = [t]
+                        current_len = len(t_surface)
+                    else:
+                        current_tokens.append(t)
+                        current_len += len(t_surface)
+                    processed_len += len(t_surface)
+                
+                if current_tokens:
+                    c_start = seg_start + (processed_len - current_len) / total_len * seg_dur
+                    chunked_segments.append({
+                        "start": c_start, "end": seg_end,
+                        "text": " ".join([tk.surface for tk in current_tokens])
+                    })
+            
+            # --- DEBUG EXPORT: MORPHOLOGICAL CHUNKING ---
+            try:
+                chunked_path = os.path.join(OUTPUT_DIR, f"{base_name}_morphological_chunked.srt")
+                generate_srt(chunked_segments, chunked_path)
+                log(f"💾 Saved morphological chunked SRT: {os.path.basename(chunked_path)}")
+            except Exception as e:
+                logger.warning(f"Failed to save morphological chunked debug SRT: {e}")
 
             # 2. Align
             log("═"*40)
-            log("📏 PHASE 2: ALIGNMENT & DIARIZATION")
+            log("📏 PHASE 2: ALIGNMENT")
             log("═"*40)
             log(f"📐 Aligning phonemes using model: {align_model or 'default-ja'}...")
             model_a, metadata = whisperx.load_align_model(language_code="ja", device=self.device, model_name=align_model)
-            result = whisperx.align(result["segments"], model_a, metadata, audio, self.device, return_char_alignments=False)
+            result = whisperx.align(chunked_segments, model_a, metadata, audio, self.device, return_char_alignments=False)
             check_abort()
 
             # --- DEBUG EXPORT: RAW ALIGNMENT ---
             try:
                 raw_align_path = os.path.join(OUTPUT_DIR, f"{base_name}_raw_alignment.srt")
-                # We use the raw aligned segments before timing offsets or smart-wrapping
                 generate_srt(result["segments"], raw_align_path)
                 log(f"💾 Saved raw alignment: {os.path.basename(raw_align_path)}")
             except Exception as e:
                 logger.warning(f"Failed to save raw alignment debug SRT: {e}")
             
+            # Use raw model segments directly (Removing Janome spaces for translation)
+            segmented_ja = []
+            for s in result["segments"]:
+                s["text"] = s["text"].replace(" ", "")
+                segmented_ja.append(s)
+
             if timing_offset != 0:
                 log(f"⏱️ Applying manual timing offset: {timing_offset:+.3f}s")
-                for seg in result["segments"]:
+                for seg in segmented_ja:
                     seg["start"] += timing_offset; seg["end"] += timing_offset
                     if "words" in seg:
                         for w in seg["words"]:
                             if "start" in w: w["start"] += timing_offset
                             if "end" in w: w["end"] += timing_offset
-
-            # 4. Smart-Wrap (Morphological Chunking)
-            # We strictly enforce density limits but ONLY split at the boundaries defined by Janome.
-            log(f"📦 Performing morphological chunking (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
-            segmented_ja = []
-            for seg in result["segments"]:
-                words = seg.get("words", [])
-                speaker = seg.get("speaker", "UNKNOWN")
-                
-                if not words:
-                    if seg.get("text", "").strip():
-                        segmented_ja.append({
-                            "start": seg["start"], "end": seg["end"],
-                            "text": seg["text"].strip().replace(" ", ""), # Remove Janome spaces for final output
-                            "speaker": speaker
-                        })
-                    continue
-                
-                current_buffer = []
-                current_len = 0
-                line_count = 1
-                
-                for w in words:
-                    w_text = w["word"].strip()
-                    w_len = len(w_text)
-                    
-                    # If adding this word exceeds the width
-                    if current_len + w_len > max_line_width:
-                        if line_count < max_line_count:
-                            # Wrap to next line within same segment
-                            line_count += 1
-                            current_len = w_len
-                            current_buffer.append(w)
-                        else:
-                            # Density limit reached. Flush the buffer into a new segment.
-                            if current_buffer:
-                                s_start = current_buffer[0].get("start", seg["start"])
-                                s_end = current_buffer[-1].get("end", seg["end"])
-                                # Safety fallbacks for unaligned words
-                                if s_start is None: s_start = seg["start"]
-                                if s_end is None: s_end = seg["end"]
-                                
-                                s_text = "".join([bw["word"] for bw in current_buffer]).replace(" ", "")
-                                segmented_ja.append({
-                                    "start": s_start, "end": s_end, "text": s_text, "speaker": speaker
-                                })
-                            current_buffer = [w]
-                            current_len = w_len
-                            line_count = 1
-                    else:
-                        current_len += w_len
-                        current_buffer.append(w)
-                
-                if current_buffer:
-                    s_start = current_buffer[0].get("start", seg["start"])
-                    s_end = current_buffer[-1].get("end", seg["end"])
-                    if s_start is None: s_start = seg["start"]
-                    if s_end is None: s_end = seg["end"]
-                    
-                    s_text = "".join([bw["word"] for bw in current_buffer]).replace(" ", "")
-                    segmented_ja.append({
-                        "start": s_start, "end": s_end, "text": s_text, "speaker": speaker
-                    })
-            check_abort()
-
-            # --- DEBUG EXPORT: MORPHOLOGICAL CHUNKING ---
-            try:
-                chunked_path = os.path.join(OUTPUT_DIR, f"{base_name}_morphological_chunked.srt")
-                generate_srt(segmented_ja, chunked_path)
-                log(f"💾 Saved morphological chunked SRT: {os.path.basename(chunked_path)}")
-            except Exception as e:
-                logger.warning(f"Failed to save morphological chunked debug SRT: {e}")
 
             # 5. VRAM Reset
             log("═"*40)
