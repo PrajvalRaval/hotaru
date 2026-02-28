@@ -159,8 +159,23 @@ class TranscribeEngine:
             log("═"*40)
             log(f"🌍 Localizing {len(segmented_ja)} segments using {ollama_model}...")
             
+            # Dynamically fetch context length
+            native_ctx = self.translator.get_model_context_length(ollama_model)
+            
+            # Calculate optimal num_ctx (cap at 32k to avoid OOM on 24GB VRAM, but allow smaller)
+            eff_num_ctx = min(native_ctx, 32768)
+            
+            # Determine initial chunk size based on context window
+            if eff_num_ctx <= 8192:
+                eff_chunk_size = 15
+            elif eff_num_ctx <= 16384:
+                eff_chunk_size = 20
+            else:
+                eff_chunk_size = 25 # Safe baseline for 32k+ context
+                
+            log(f"🧠 Model native context: {native_ctx}. Set effective num_ctx to {eff_num_ctx}, chunk size to {eff_chunk_size}.")
+
             translated_segments = []
-            eff_chunk_size = 25 # Initial chunk size for dynamic reduction
             
             i = 0
             chunk_num = 1
@@ -182,7 +197,7 @@ class TranscribeEngine:
                 
                 if sub_chunk:
                     localized_texts, new_chunk_size = self.translator.translate_batch(
-                        sub_chunk, ollama_model, tolerance_pct, cancel_check, log
+                        sub_chunk, ollama_model, tolerance_pct, cancel_check, log, num_ctx=eff_num_ctx
                     )
                     
                     if new_chunk_size < eff_chunk_size:

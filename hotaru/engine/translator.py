@@ -10,11 +10,29 @@ class OllamaTranslator:
     """One-Pass Localization Engine optimized for Qwen3 30B MoE."""
     
     def __init__(self, host: str = "http://localhost:11434"):
-        self.client = ollama.Client(host=host, timeout=None)
+        self.host = host.rstrip('/')
+        self.client = ollama.Client(host=self.host, timeout=None)
+
+    def get_model_context_length(self, model_name: str) -> int:
+        """Fetches the native context window size of the loaded model from Ollama."""
+        try:
+            import requests
+            response = requests.post(f"{self.host}/api/show", json={"name": model_name})
+            data = response.json()
+            
+            if "model_info" in data:
+                for key, value in data["model_info"].items():
+                    if key.endswith(".context_length"):
+                        return int(value)
+        except Exception as e:
+            logger.warning(f"Failed to fetch context length for {model_name}: {e}")
+            
+        return 8192 # Safe fallback if not found
 
     def translate_batch(self, segments: List[Dict], model: str, tolerance_pct: int = 5, 
                         cancel_check: Optional[Callable[[], bool]] = None, 
-                        log_callback: Optional[Callable[[str], None]] = None) -> Tuple[List[str], int]:
+                        log_callback: Optional[Callable[[str], None]] = None,
+                        num_ctx: int = 32768) -> Tuple[List[str], int]:
         """One-Pass 'Direct-to-Fansub' Localization. Handles translation and script doctoring in one pass."""
         if not model: return [s["text"] for s in segments], len(segments)
         
@@ -74,10 +92,12 @@ class OllamaTranslator:
                 if attempt > 0:
                     current_system += "\nSTRICT: Output ONLY the Line X: lines. Do not add any filler."
 
+                num_predict = min(24576, max(2048, num_ctx // 2))
+
                 response = self.client.chat(
                     model=model, 
                     messages=[{'role': 'system', 'content': current_system}, {'role': 'user', 'content': user_prompt}],
-                    options={'num_ctx': 32768, 'num_predict': 24576, 'temperature': 0.3, 'top_p': 0.9},
+                    options={'num_ctx': num_ctx, 'num_predict': num_predict, 'temperature': 0.3, 'top_p': 0.9},
                     keep_alive="5m", stream=False
                 )
                 
