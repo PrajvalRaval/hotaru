@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 
 from hotaru.engine.translator import OllamaTranslator
-from hotaru.engine.subtitle_utils import is_likely_song, generate_srt
+from hotaru.engine.subtitle_utils import generate_srt
 from hotaru.engine.audio_utils import isolate_vocals
 
 logger = logging.getLogger("HotaruEngine")
@@ -202,12 +202,9 @@ class TranscribeEngine:
                 total_chars = sum(len(s.get("text", "")) for s in chunk)
                 log(f"🌎 Localizing chunk {chunk_num}/{num_chunks} ({len(chunk)} segments, ~{total_chars} chars)...")
                 
-                # Filter songs
-                sub_chunk = [s for s in chunk if not is_likely_song(s.get("text", ""))]
-                
-                if sub_chunk:
+                if chunk:
                     localized_texts, new_chunk_size = self.translator.translate_batch(
-                        sub_chunk, ollama_model, tolerance_pct, cancel_check, log, num_ctx=eff_num_ctx
+                        chunk, ollama_model, tolerance_pct, cancel_check, log, num_ctx=eff_num_ctx
                     )
                     
                     if new_chunk_size < eff_chunk_size:
@@ -216,8 +213,8 @@ class TranscribeEngine:
                     
                     ptr = 0
                     for seg in chunk:
-                        if is_likely_song(seg.get("text", "")): seg["translated_text"] = ""
-                        else: seg["translated_text"] = localized_texts[ptr]; ptr += 1
+                        seg["translated_text"] = localized_texts[ptr]
+                        ptr += 1
                 else:
                     for seg in chunk: seg["translated_text"] = ""
                 
