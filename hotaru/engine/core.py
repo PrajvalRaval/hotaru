@@ -17,12 +17,11 @@ logger = logging.getLogger("HotaruEngine")
 
 class TranscribeEngine:
     """Core engine orchestrating WhisperX and Ollama."""
-    
     def __init__(self, model_size: str = "kotoba-tech/kotoba-whisper-v2.0-faster", 
                  ollama_host: str = "http://localhost:11434"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.compute_type = "float16" if self.device == "cuda" else "int8"
-        self.tokenizer = Tokenizer()
+        self.tokenizer = Tokenizer(wakati=True)
         
         # Local model path handling
         if model_size == "litagin/anime-whisper":
@@ -115,7 +114,7 @@ class TranscribeEngine:
             limit = max_line_width * max_line_count
             
             for seg in result["segments"]:
-                tokens = list(self.tokenizer.tokenize(seg["text"]))
+                tokens = list(self.tokenizer.tokenize(seg["text"])) # Tokens are now strings (wakati=True)
                 seg_text = seg["text"]
                 seg_start = seg["start"]
                 seg_end = seg["end"]
@@ -131,13 +130,13 @@ class TranscribeEngine:
                 processed_len = 0
                 
                 for t in tokens:
-                    t_surface = t.surface
+                    t_surface = t
                     if current_len + len(t_surface) > limit and current_tokens:
                         c_start = seg_start + (processed_len - current_len) / total_len * seg_dur
                         c_end = seg_start + processed_len / total_len * seg_dur
                         chunked_segments.append({
                             "start": c_start, "end": c_end,
-                            "text": " ".join([tk.surface for tk in current_tokens])
+                            "text": " ".join(current_tokens)
                         })
                         current_tokens = [t]
                         current_len = len(t_surface)
@@ -150,7 +149,7 @@ class TranscribeEngine:
                     c_start = seg_start + (processed_len - current_len) / total_len * seg_dur
                     chunked_segments.append({
                         "start": c_start, "end": seg_end,
-                        "text": " ".join([tk.surface for tk in current_tokens])
+                        "text": " ".join(current_tokens)
                     })
             
             # --- DEBUG EXPORT: MORPHOLOGICAL CHUNKING ---
