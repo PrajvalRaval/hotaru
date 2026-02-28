@@ -12,8 +12,8 @@ Usage:
   # Basic execution (defaults to qwen3:30b and chunk size 25)
   python scripts/polish_srt.py path/to/your_subs.srt
 
-  # Advanced execution (custom model, custom output, custom chunk size)
-  python scripts/polish_srt.py path/to/your_subs.srt -m "qwen3.5:35b" -c 15 -o path/to/polished_subs.srt
+  # Advanced execution (custom model, custom output folder, custom chunk size)
+  python scripts/polish_srt.py path/to/your_subs.srt -m "qwen3.5:35b" -c 15 -o path/to/output_folder/
 """
 
 import os
@@ -122,7 +122,7 @@ def polish_chunk(chunk, model, client):
 def main():
     parser = argparse.ArgumentParser(description="Standalone script to polish machine-translated SRT files using local Ollama models.")
     parser.add_argument("input_srt", help="Path to the input SRT file")
-    parser.add_argument("-o", "--output", help="Optional: Path to the output SRT file. Defaults to appending '_polished' to the filename.")
+    parser.add_argument("-o", "--output", help="Optional: Path to the output folder. Defaults to the same directory as the input file.")
     parser.add_argument("-m", "--model", default="qwen3:30b", help="Ollama model to use (default: qwen3:30b)")
     parser.add_argument("-c", "--chunk_size", type=int, default=25, help="Lines to process per batch (default: 25)")
     parser.add_argument("--host", default="http://localhost:11434", help="Ollama host URL (default: http://localhost:11434)")
@@ -133,13 +133,16 @@ def main():
         print(f"❌ Error: File '{args.input_srt}' not found.")
         return
 
-    output_path = args.output
-    if not output_path:
-        base = args.input_srt.rsplit('.', 1)
-        if len(base) == 2:
-            output_path = f"{base[0]}_polished.{base[1]}"
-        else:
-            output_path = f"{args.input_srt}_polished"
+    filename = os.path.basename(args.input_srt)
+    base = filename.rsplit('.', 1)
+    new_filename = f"{base[0]}_polished.{base[1]}" if len(base) == 2 else f"{filename}_polished"
+    
+    if args.output:
+        os.makedirs(args.output, exist_ok=True)
+        output_path = os.path.join(args.output, new_filename)
+    else:
+        input_dir = os.path.dirname(args.input_srt)
+        output_path = os.path.join(input_dir, new_filename) if input_dir else new_filename
             
     print(f"🎬 Loading '{args.input_srt}'...")
     subtitles = parse_srt(args.input_srt)
