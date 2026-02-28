@@ -63,7 +63,7 @@ class OllamaTranslator:
         user_prompt = f"Localize the following anime script:\n\n{input_text}\n\nOutput:"
         best_effort_cleaned = original_lines
         min_missing = len(segments)
-        max_missing = max(1, int(len(segments) * (tolerance_pct / 100)))
+        max_missing = max(2, int(len(segments) * (tolerance_pct / 100)))
         
         for attempt in range(3):
             if cancel_check and cancel_check(): raise InterruptedError()
@@ -131,6 +131,29 @@ class OllamaTranslator:
                     min_missing = missing_count; best_effort_cleaned = cleaned
                 
                 if missing_count <= max_missing: return cleaned
+                
+                # --- SMART FALLBACK MECHANISM ---
+                done_reason = ""
+                if hasattr(response, 'done_reason'):
+                    done_reason = response.done_reason
+                elif isinstance(response, dict):
+                    done_reason = response.get('done_reason', "")
+
+                # Circuit Breaker: If we hit a hard token limit or failed the tolerance test
+                if done_reason == "length" or missing_count > max_missing:
+                    if done_reason == "length":
+                        log(f"🛑 Circuit Breaker: Hit token limit (done_reason='length').")
+                    
+                    # Dynamic Chunk Reduction: Divide and Conquer
+                    if len(segments) >= 4:
+                        log(f"✂️ Chunk too complex (Missed {missing_count}). Splitting {len(segments)} lines into two smaller chunks...")
+                        mid = len(segments) // 2
+                        first_half = self.translate_batch(segments[:mid], model, tolerance_pct, cancel_check, log_callback)
+                        second_half = self.translate_batch(segments[mid:], model, tolerance_pct, cancel_check, log_callback)
+                        return first_half + second_half
+                    else:
+                        log(f"⚠️ Chunk too small to split. Retrying same chunk...")
+                
                 time.sleep(1)
             except Exception as e:
                 log(f"❌ Ollama Connection Error: {e}")
