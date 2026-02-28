@@ -94,12 +94,13 @@ class OllamaTranslator:
                 results = [None] * len(segments)
                 lines = content.split('\n')
                 match_count = 0
+                line_pattern = re.compile(r'^Line\s*(\d+)\s*:\s*(.*)', re.IGNORECASE)
 
                 for line in lines:
                     line = line.strip()
                     if not line: continue
-                    # Strict Regex to capture the Line Index and the Translation
-                    match = re.search(r'^(?:Line\s*)?(\d+)\s*(?:\[.*?\])?\s*[:\.-]\s*(.*)', line, flags=re.IGNORECASE)
+                    
+                    match = line_pattern.match(line)
                     if match:
                         idx = int(match.group(1)) - 1
                         if 0 <= idx < len(segments):
@@ -109,6 +110,8 @@ class OllamaTranslator:
                                 text = re.sub(r'^\[Polished Translation\]\s*', '', text, flags=re.IGNORECASE)
                                 results[idx] = text
                                 match_count += 1
+                    else:
+                        log(f"⚠️ Formatting mismatch ignored: {line}")
 
                 log(f"✅ Received {len(content)} chars. Parsed {match_count}/{len(segments)} lines.")
 
@@ -119,8 +122,8 @@ class OllamaTranslator:
                     if results[k] is not None:
                         cleaned.append(results[k])
                     else:
-                        # Failsafe: Preserve timing by keeping original text for skipped lines
-                        cleaned.append(original_lines[k])
+                        log(f"🚨 FAILSAFE TRIGGERED: LLM skipped Line {k+1}. Falling back to raw Japanese.")
+                        cleaned.append(f"[UNTRANSLATED] {original_lines[k]}")
 
                 missing_count = sum(1 for r in results if r is None)
 
