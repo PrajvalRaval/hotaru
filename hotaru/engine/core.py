@@ -161,12 +161,18 @@ class TranscribeEngine:
             
             translated_segments = []
             eff_chunk_size = 25 # Initial chunk size for dynamic reduction
-            num_chunks = (len(segmented_ja) + eff_chunk_size - 1) // eff_chunk_size
             
-            for i in range(0, len(segmented_ja), eff_chunk_size):
+            i = 0
+            chunk_num = 1
+            while i < len(segmented_ja):
                 check_abort()
+                
+                # Estimate total chunks based on current effective chunk size
+                remaining_lines = len(segmented_ja) - i
+                estimated_remaining_chunks = (remaining_lines + eff_chunk_size - 1) // eff_chunk_size
+                num_chunks = chunk_num + estimated_remaining_chunks - 1
+                
                 chunk = segmented_ja[i:i + eff_chunk_size]
-                chunk_num = i // eff_chunk_size + 1
                 
                 total_chars = sum(len(s.get("text", "")) for s in chunk)
                 log(f"🌎 Localizing chunk {chunk_num}/{num_chunks} ({len(chunk)} segments, ~{total_chars} chars)...")
@@ -175,9 +181,13 @@ class TranscribeEngine:
                 sub_chunk = [s for s in chunk if not is_likely_song(s.get("text", ""))]
                 
                 if sub_chunk:
-                    localized_texts = self.translator.translate_batch(
+                    localized_texts, new_chunk_size = self.translator.translate_batch(
                         sub_chunk, ollama_model, tolerance_pct, cancel_check, log
                     )
+                    
+                    if new_chunk_size < eff_chunk_size:
+                        log(f"📉 Adjusting future batch size to {new_chunk_size} lines to prevent token exhaustion.")
+                        eff_chunk_size = new_chunk_size
                     
                     ptr = 0
                     for seg in chunk:
@@ -187,6 +197,8 @@ class TranscribeEngine:
                     for seg in chunk: seg["translated_text"] = ""
                 
                 translated_segments.extend(chunk)
+                i += len(chunk)
+                chunk_num += 1
             
             log("✅ Localization complete.")
             return translated_segments

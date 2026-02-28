@@ -2,7 +2,7 @@ import logging
 import re
 import time
 import ollama
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable, Tuple
 
 logger = logging.getLogger("HotaruTranslator")
 
@@ -14,9 +14,9 @@ class OllamaTranslator:
 
     def translate_batch(self, segments: List[Dict], model: str, tolerance_pct: int = 5, 
                         cancel_check: Optional[Callable[[], bool]] = None, 
-                        log_callback: Optional[Callable[[str], None]] = None) -> List[str]:
+                        log_callback: Optional[Callable[[str], None]] = None) -> Tuple[List[str], int]:
         """One-Pass 'Direct-to-Fansub' Localization. Handles translation and script doctoring in one pass."""
-        if not model: return [s["text"] for s in segments]
+        if not model: return [s["text"] for s in segments], len(segments)
         
         def log(msg: str):
             if log_callback: log_callback(msg)
@@ -130,7 +130,7 @@ class OllamaTranslator:
                 if missing_count < min_missing:
                     min_missing = missing_count; best_effort_cleaned = cleaned
                 
-                if missing_count <= max_missing: return cleaned
+                if missing_count <= max_missing: return cleaned, len(segments)
                 
                 # --- SMART FALLBACK MECHANISM ---
                 done_reason = ""
@@ -148,9 +148,9 @@ class OllamaTranslator:
                     if len(segments) >= 4:
                         log(f"✂️ Chunk too complex (Missed {missing_count}). Splitting {len(segments)} lines into two smaller chunks...")
                         mid = len(segments) // 2
-                        first_half = self.translate_batch(segments[:mid], model, tolerance_pct, cancel_check, log_callback)
-                        second_half = self.translate_batch(segments[mid:], model, tolerance_pct, cancel_check, log_callback)
-                        return first_half + second_half
+                        first_half, new_size_1 = self.translate_batch(segments[:mid], model, tolerance_pct, cancel_check, log_callback)
+                        second_half, new_size_2 = self.translate_batch(segments[mid:], model, tolerance_pct, cancel_check, log_callback)
+                        return first_half + second_half, min(new_size_1, new_size_2)
                     else:
                         log(f"⚠️ Chunk too small to split. Retrying same chunk...")
                 
@@ -160,4 +160,4 @@ class OllamaTranslator:
                 if attempt == 2: break
                 time.sleep(2)
         
-        return best_effort_cleaned
+        return best_effort_cleaned, len(segments)
