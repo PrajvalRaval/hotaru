@@ -63,5 +63,3 @@ def render_sidebar(ollama_models):
         with st.expander("🌎 Translation", expanded=False):
             st.text_input("🏠 Ollama Host", value="http://localhost:11434", key="ollama_host")
             st.selectbox("Target LLM", ollama_models, index=0 if ollama_models else None, key="last_model")
-            
-            st.slider("⚖️ Translation Tolerance (%)", 0, 50, 5, key="translation_tolerance_slider")

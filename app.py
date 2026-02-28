@@ -109,7 +109,6 @@ def render_task_card(name):
                     "ollama_host": st.session_state.ollama_host,
                     "ollama_model": st.session_state.last_model,
                     "timing_offset": st.session_state.timing_offset_slider,
-                    "tolerance_pct": st.session_state.translation_tolerance_slider,
                     "max_width": st.session_state.max_line_width_input,
                     "max_lines": st.session_state.max_line_count_input,
                     "align_model": st.session_state.align_model_input,
