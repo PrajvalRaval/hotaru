@@ -105,7 +105,6 @@ def render_task_card(name):
                 
                 config = {
                     "model_size": st.session_state.model_size_val,
-                    "hf_token": st.session_state.get("hf_token_input"),
                     "ollama_host": st.session_state.ollama_host,
                     "ollama_model": st.session_state.last_model,
                     "timing_offset": st.session_state.timing_offset_slider,

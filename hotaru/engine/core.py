@@ -19,7 +19,6 @@ class TranscribeEngine:
     """Core engine orchestrating WhisperX and Ollama."""
     
     def __init__(self, model_size: str = "kotoba-tech/kotoba-whisper-v2.0-faster", 
-                 hf_token: Optional[str] = None, 
                  ollama_host: str = "http://localhost:11434"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.compute_type = "float16" if self.device == "cuda" else "int8"
@@ -44,16 +43,6 @@ class TranscribeEngine:
             model_size, self.device, compute_type=self.compute_type,
             vad_method="silero", vad_options=vad_options
         )
-
-        self.diarize_model = None
-        if hf_token:
-            try:
-                self.diarize_model = whisperx.diarize.DiarizationPipeline(
-                    model_name='pyannote/speaker-diarization-3.1', 
-                    token=hf_token, device=self.device
-                )
-            except Exception as e:
-                logger.warning(f"Diarization load failed: {e}")
 
     def get_free_vram(self) -> float:
         if self.device == "cuda":
@@ -153,12 +142,6 @@ class TranscribeEngine:
                             if "start" in w: w["start"] += timing_offset
                             if "end" in w: w["end"] += timing_offset
 
-            # 3. Diarize
-            if self.diarize_model:
-                log("👥 Identifying speakers using Pyannote...")
-                diarize_segments = self.diarize_model(audio)
-                result = whisperx.assign_word_speakers(diarize_segments, result)
-
             # 4. Smart-Wrap (Morphological Chunking)
             # We strictly enforce density limits but ONLY split at the boundaries defined by Janome.
             log(f"📦 Performing morphological chunking (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
@@ -230,7 +213,6 @@ class TranscribeEngine:
             log("🧹 WhisperX pipeline complete. Purging GPU memory...")
             if hasattr(self, 'model'): del self.model
             if 'model_a' in locals(): del model_a
-            if self.diarize_model: del self.diarize_model; self.diarize_model = None
             gc.collect()
             if self.device == "cuda":
                 torch.cuda.empty_cache(); torch.cuda.ipc_collect()

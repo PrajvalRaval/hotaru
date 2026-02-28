@@ -44,7 +44,7 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
         def cancel_check():
             return name not in all_tasks or all_tasks[name].get("status") != "Processing" or shutdown_event.is_set()
 
-        eng = TranscribeEngine(model_size=config["model_size"], hf_token=config["hf_token"], ollama_host=config["ollama_host"])
+        eng = TranscribeEngine(model_size=config["model_size"], ollama_host=config["ollama_host"])
         
         segments = eng.process_video(
             task_data["file_path"], 

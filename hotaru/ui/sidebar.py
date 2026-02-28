@@ -48,10 +48,6 @@ def render_sidebar(ollama_models):
                         subprocess.run(["python", "scripts/convert_anime_whisper.py"])
                         st.success("Conversion complete! Please restart app.")
 
-            st.toggle("👥 Enable Speaker ID (Diarization)", value=False, key="enable_diarization_toggle")
-            if st.session_state.enable_diarization_toggle:
-                st.text_input("🔑 HF Token", type="password", value=os.getenv("HF_TOKEN", ""), key="hf_token_input")
-            
             c1, c2 = st.columns(2)
             c1.number_input("📏 Max Width", min_value=1, max_value=100, value=42, key="max_line_width_input")
             c2.number_input("📚 Max Lines", min_value=1, max_value=5, value=2, key="max_line_count_input")
