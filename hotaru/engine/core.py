@@ -160,7 +160,7 @@ class TranscribeEngine:
             log(f"🌍 Localizing {len(segmented_ja)} segments using {ollama_model}...")
             
             translated_segments = []
-            eff_chunk_size = 50 # Initial chunk size for dynamic reduction
+            eff_chunk_size = 25 # Initial chunk size for dynamic reduction
             num_chunks = (len(segmented_ja) + eff_chunk_size - 1) // eff_chunk_size
             
             for i in range(0, len(segmented_ja), eff_chunk_size):
