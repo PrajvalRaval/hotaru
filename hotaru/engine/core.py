@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 
 from hotaru.engine.translator import OllamaTranslator
-from hotaru.engine.subtitle_utils import generate_srt
+from hotaru.engine.subtitle_utils import generate_srt, snap_segments_to_words
 from hotaru.engine.audio_utils import isolate_vocals
 from janome.tokenizer import Tokenizer
 
@@ -177,6 +177,18 @@ class TranscribeEngine:
             except Exception as e:
                 logger.warning(f"Failed to save raw alignment debug SRT: {e}")
             
+            # --- WORD-BASED SNAPPING (Perfectly Snapped Subtitles) ---
+            log("🧪 Generating perfectly snapped subtitles from word bounding boxes...")
+            try:
+                snapped_segments = snap_segments_to_words(result["segments"], max_pause=0.4, max_chars=40)
+                snapped_path = os.path.join(OUTPUT_DIR, f"{base_name}_perfectly_snapped.srt")
+                generate_srt(snapped_segments, snapped_path)
+                log(f"💾 Saved perfectly snapped SRT: {os.path.basename(snapped_path)}")
+                # We update result["segments"] to use these perfectly snapped versions for downstream tasks
+                result["segments"] = snapped_segments
+            except Exception as e:
+                logger.error(f"❌ Failed to generate snapped subtitles: {e}")
+
             # Use raw model segments directly (Removing Janome spaces for translation)
             segmented_ja = []
             for s in result["segments"]:
