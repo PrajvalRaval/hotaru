@@ -166,12 +166,15 @@ class TranscribeEngine:
             eff_num_ctx = min(native_ctx, 32768)
             
             # Determine initial chunk size based on context window
-            if eff_num_ctx <= 8192:
-                eff_chunk_size = 15
-            elif eff_num_ctx <= 16384:
-                eff_chunk_size = 20
+            # Smaller context windows (like 40k) struggle heavily with attention drop-off on strict mapping
+            if native_ctx <= 8192:
+                eff_chunk_size = 4
+            elif native_ctx <= 16384:
+                eff_chunk_size = 5
+            elif native_ctx <= 65536: # Catches models like qwen3:32b with 40k context
+                eff_chunk_size = 6
             else:
-                eff_chunk_size = 25 # Safe baseline for 32k+ context
+                eff_chunk_size = 25 # Safe baseline for models with massive (128k+) context
                 
             log(f"🧠 Model native context: {native_ctx}. Set effective num_ctx to {eff_num_ctx}, chunk size to {eff_chunk_size}.")
 
