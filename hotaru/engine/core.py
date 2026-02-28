@@ -116,8 +116,8 @@ class TranscribeEngine:
             result = whisperx.align(result["segments"], model_a, metadata, audio, self.device, return_char_alignments=False)
             check_abort()
             
-            # Prepare segments for translation (Filter only completely empty blobs)
-            segmented_ja = [s for s in result["segments"] if s.get("text", "").strip()]
+            # Use raw model segments directly (Pure AI - No Manual Filtering)
+            segmented_ja = result["segments"]
 
             if timing_offset != 0:
                 log(f"⏱️ Applying manual timing offset: {timing_offset:+.3f}s")
@@ -133,8 +133,8 @@ class TranscribeEngine:
                 log("👥 Identifying speakers using Pyannote...")
                 diarize_segments = self.diarize_model(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
-                # Re-assign to ensure diarization is captured in our working list
-                segmented_ja = [s for s in result["segments"] if s.get("text", "").strip()]
+                # Keep pointer synchronized with the model's final updated segments
+                segmented_ja = result["segments"]
 
             # 5. VRAM Reset
             log("═"*40)
