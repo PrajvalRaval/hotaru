@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 
 from hotaru.engine.translator import OllamaTranslator
-from hotaru.engine.subtitle_utils import resegment_results, is_likely_song, generate_srt
+from hotaru.engine.subtitle_utils import is_likely_song, generate_srt
 from hotaru.engine.audio_utils import isolate_vocals
 
 logger = logging.getLogger("HotaruEngine")
