@@ -64,7 +64,4 @@ def render_sidebar(ollama_models):
             st.text_input("🏠 Ollama Host", value="http://localhost:11434", key="ollama_host")
             st.selectbox("Target LLM", ollama_models, index=0 if ollama_models else None, key="last_model")
             
-            st.toggle("🚀 Single Batch (No Chunking)", value=False, key="chunk_toggle")
-            if not st.session_state.chunk_toggle:
-                st.number_input("📦 Chunk Size (Lines)", min_value=1, max_value=500, value=25, key="chunk_size_val")
             st.slider("⚖️ Translation Tolerance (%)", 0, 50, 5, key="translation_tolerance_slider")

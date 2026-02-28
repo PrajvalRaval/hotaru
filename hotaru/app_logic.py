@@ -48,13 +48,11 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
         
         segments = eng.process_video(
             task_data["file_path"], 
-            ollama_model=config["ollama_model"], 
-            log_callback=engine_callback, 
-            timing_offset=config["timing_offset"], 
-            chunk_size=config["chunk_size"], 
+            ollama_model=config["ollama_model"],
+            log_callback=engine_callback,
+            timing_offset=config["timing_offset"],
             tolerance_pct=config["tolerance_pct"],
-            cancel_check=cancel_check,
-            max_line_width=config["max_width"],
+            cancel_check=cancel_check,            max_line_width=config["max_width"],
             max_line_count=config["max_lines"],
             align_model=config["align_model"],
             whisper_chunk_size=config["whisper_chunk"]

@@ -63,13 +63,12 @@ class TranscribeEngine:
             return v_free / 1024**3
         return 0.0
 
-    def process_video(self, video_path: str, ollama_model: str = "qwen3:30b", 
-                      log_callback: Optional[Callable[[str], None]] = None, 
-                      timing_offset: float = 0.0, chunk_size: int = 25, 
-                      tolerance_pct: int = 5, cancel_check: Optional[Callable[[], bool]] = None, 
-                      max_line_width: int = 42, max_line_count: int = 2, 
-                      align_model: Optional[str] = None, whisper_chunk_size: int = 30) -> List[Dict[str, Any]]:
-        
+    def process_video(self, video_path: str, ollama_model: str = "qwen3:30b",
+                      log_callback: Optional[Callable[[str], None]] = None,
+                      timing_offset: float = 0.0,
+                      tolerance_pct: int = 5, cancel_check: Optional[Callable[[], bool]] = None,
+                      max_line_width: int = 42, max_line_count: int = 2,
+                      align_model: Optional[str] = None, whisper_chunk_size: int = 30) -> List[Dict[str, Any]]:        
         def log(msg: str):
             # The global logger now handles [HH:MM:SS] LEVEL prefixes
             if log_callback: log_callback(msg)
@@ -161,7 +160,7 @@ class TranscribeEngine:
             log(f"🌍 Localizing {len(segmented_ja)} segments using {ollama_model}...")
             
             translated_segments = []
-            eff_chunk_size = chunk_size if chunk_size > 0 else len(segmented_ja)
+            eff_chunk_size = 50 # Initial chunk size for dynamic reduction
             num_chunks = (len(segmented_ja) + eff_chunk_size - 1) // eff_chunk_size
             
             for i in range(0, len(segmented_ja), eff_chunk_size):
