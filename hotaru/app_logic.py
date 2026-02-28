@@ -46,6 +46,10 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
 
         eng = TranscribeEngine(model_size=config["model_size"], ollama_host=config["ollama_host"])
         
+        # Pre-calculate target SRT path for streaming updates
+        srt_name = os.path.splitext(name)[0] + ".srt"
+        srt_path = os.path.join(OUTPUT_DIR, srt_name)
+
         segments = eng.process_video(
             task_data["file_path"], 
             ollama_model=config["ollama_model"],
@@ -55,14 +59,11 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
             max_line_count=config["max_lines"],
             align_model=config["align_model"],
             whisper_chunk_size=config["whisper_chunk"],
-            enable_word_snapping=config.get("word_snapping", False)
+            enable_word_snapping=config.get("word_snapping", False),
+            srt_output_path=srt_path
         )
         
-        # Success
-        srt_name = os.path.splitext(name)[0] + ".srt"
-        srt_path = os.path.join(OUTPUT_DIR, srt_name)
-        generate_srt(segments, srt_path)
-        
+        # Final update
         task_data.update({
             "status": "Completed", "stage": "✅ Done", "progress": 100,
             "output_path": srt_path, "output_name": srt_name

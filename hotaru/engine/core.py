@@ -57,7 +57,8 @@ class TranscribeEngine:
                       tolerance_pct: int = 5, cancel_check: Optional[Callable[[], bool]] = None,
                       max_line_width: int = 42, max_line_count: int = 2,
                       align_model: Optional[str] = None, whisper_chunk_size: int = 30,
-                      enable_word_snapping: bool = False) -> List[Dict[str, Any]]:        
+                      enable_word_snapping: bool = False,
+                      srt_output_path: Optional[str] = None) -> List[Dict[str, Any]]:        
         def log(msg: str):
             # The global logger now handles [HH:MM:SS] LEVEL prefixes
             if log_callback: log_callback(msg)
@@ -283,6 +284,13 @@ class TranscribeEngine:
                 translated_segments.extend(chunk)
                 i += len(chunk)
                 chunk_num += 1
+
+                # Incremental Save: Write current progress to SRT file
+                if srt_output_path:
+                    try:
+                        generate_srt(translated_segments, srt_output_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to perform incremental save: {e}")
             
             log("✅ Localization complete.")
             return translated_segments
