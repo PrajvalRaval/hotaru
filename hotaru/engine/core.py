@@ -4,11 +4,13 @@ import whisperx
 import gc
 import time
 import logging
+import cv2
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Callable
 
 from hotaru.engine.translator import OllamaTranslator
 from hotaru.engine.subtitle_utils import resegment_results, is_likely_song, generate_srt
+from hotaru.engine.audio_utils import isolate_vocals
 
 logger = logging.getLogger("HotaruEngine")
 
@@ -69,10 +71,9 @@ class TranscribeEngine:
                       align_model: Optional[str] = None, whisper_chunk_size: int = 30) -> List[Dict[str, Any]]:
         
         def log(msg: str):
-            ts = datetime.now().strftime("%H:%M:%S")
-            formatted = f"[{ts}] INFO: {msg}"
-            if log_callback: log_callback(formatted)
-            else: logger.info(formatted)
+            # The global logger now handles [HH:MM:SS] LEVEL prefixes
+            if log_callback: log_callback(msg)
+            else: logger.info(msg)
 
         def check_abort():
             time.sleep(0.1)
@@ -80,19 +81,31 @@ class TranscribeEngine:
                 log("🚫 Task cancellation requested.")
                 raise InterruptedError("Task cancelled by user.")
 
+        # Initialize tracking variables for cleanup
+        temp_vocal_path = None
         try:
-            # 0. Pre-emptive Ollama Unload
+            # 0. Vocal Isolation (The Teardown)
+            from hotaru.common.constants import UPLOAD_DIR
+            log("═"*40)
+            log(f"🎤 PHASE 0: VOCAL ISOLATION - {os.path.basename(video_path)}")
+            log("═"*40)
+            log("🎬 Extracting high-fidelity audio for separation...")
+            temp_vocal_path = isolate_vocals(video_path, UPLOAD_DIR, device=self.device)
+            audio_source = temp_vocal_path
+            check_abort()
+
+            # 0.1 Pre-emptive Ollama Unload
             try:
                 if ollama_model: self.translator.client.generate(model=ollama_model, keep_alive=0)
             except: pass
 
             log("═"*40)
-            log(f"🎧 PHASE 1: TRANSCRIPTION - {os.path.basename(video_path)}")
+            log("🎧 PHASE 1: TRANSCRIPTION")
             log("═"*40)
             
             # 1. Transcribe
-            log(f"🎬 Loading audio from video...")
-            audio = whisperx.load_audio(video_path)
+            log(f"🎬 Loading audio from {os.path.basename(audio_source)}...")
+            audio = whisperx.load_audio(audio_source)
             log(f"🗣️ Transcribing Japanese (VAD Onset: 0.50, Chunk: {whisper_chunk_size}s)...")
             result = self.model.transcribe(audio, batch_size=16, language="ja", chunk_size=whisper_chunk_size)
             check_abort()
@@ -141,11 +154,12 @@ class TranscribeEngine:
                 v_free, _ = torch.cuda.mem_get_info()
                 log(f"✅ VRAM Reset Complete. Free VRAM: {v_free/1024**3:.2f}GB")
 
-            # 6. Translate
+            # 6. Localization (One-Pass)
             log("═"*40)
-            log("🌎 PHASE 4: OLLAMA TRANSLATION")
+            log("🌎 PHASE 4: OLLAMA LOCALIZATION (One-Pass)")
             log("═"*40)
-            log(f"🌍 Translating {len(segmented_ja)} segments using {ollama_model}...")
+            log(f"🌍 Localizing {len(segmented_ja)} segments using {ollama_model}...")
+            
             translated_segments = []
             eff_chunk_size = chunk_size if chunk_size > 0 else len(segmented_ja)
             num_chunks = (len(segmented_ja) + eff_chunk_size - 1) // eff_chunk_size
@@ -156,40 +170,31 @@ class TranscribeEngine:
                 chunk_num = i // eff_chunk_size + 1
                 
                 total_chars = sum(len(s.get("text", "")) for s in chunk)
-                log(f"🌎 Translating chunk {chunk_num}/{num_chunks} ({len(chunk)} segments, ~{total_chars} chars)...")
+                log(f"🌎 Localizing chunk {chunk_num}/{num_chunks} ({len(chunk)} segments, ~{total_chars} chars)...")
                 
                 # Filter songs
                 sub_chunk = [s for s in chunk if not is_likely_song(s.get("text", ""))]
                 
                 if sub_chunk:
-                    translated_texts = self.translator.translate_chunk(
+                    localized_texts = self.translator.translate_batch(
                         sub_chunk, ollama_model, tolerance_pct, cancel_check, log
                     )
                     
                     ptr = 0
                     for seg in chunk:
                         if is_likely_song(seg.get("text", "")): seg["translated_text"] = ""
-                        else: seg["translated_text"] = translated_texts[ptr]; ptr += 1
+                        else: seg["translated_text"] = localized_texts[ptr]; ptr += 1
                 else:
                     for seg in chunk: seg["translated_text"] = ""
                 
                 translated_segments.extend(chunk)
             
-            # 7. Polish
-            log("═"*40)
-            log("🪄 PHASE 5: AI POLISH")
-            log("═"*40)
-            log(f"🪄 Starting script refinement for {len(translated_segments)} lines...")
-            polished_texts = self.translator.smooth_translation(
-                translated_segments, ollama_model, cancel_check, log
-            )
-            for seg, polished in zip(translated_segments, polished_texts):
-                seg["translated_text"] = polished
-            
-            log("✅ AI Polish complete.")
-
+            log("✅ Localization complete.")
             return translated_segments
             
         finally:
+            if temp_vocal_path and os.path.exists(temp_vocal_path):
+                try: os.remove(temp_vocal_path)
+                except: pass
             try: self.translator.client.generate(model=ollama_model, keep_alive=0)
             except: pass

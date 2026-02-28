@@ -35,11 +35,12 @@ def render_sidebar(ollama_models):
 
         with st.expander("🗣️ Transcription", expanded=False):
             model_options = ["kotoba-tech/kotoba-whisper-v2.0-faster", "litagin/anime-whisper", "large-v3", "large-v2", "medium", "small"]
-            model_size = st.selectbox("Whisper Model", model_options, index=0, key="model_size_val")
-            
+            st.selectbox("Whisper Model", model_options, index=0, key="model_size_val")
+
             # Anime-Whisper specific check
-            if model_size == "litagin/anime-whisper":
+            if st.session_state.model_size_val == "litagin/anime-whisper":
                 if not os.path.exists("models/anime-whisper-ct2/model.bin"):
+
                     st.warning("⚠️ anime-whisper not converted yet.")
                     if st.button("Convert to CTranslate2"):
                         import subprocess

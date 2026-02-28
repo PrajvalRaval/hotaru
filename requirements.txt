@@ -13,3 +13,7 @@ pandas          # Required for some whisperx operations
 python-dotenv   # Environment variables
 psutil          # Hardware monitoring (CPU/RAM)
 nvidia-ml-py    # GPU monitoring (replaces pynvml)
+opencv-contrib-python==4.12.0.88
+opencv-contrib-python-headless==4.12.0.88
+opencv-python==4.12.0.88
+opencv-python-headless==4.12.0.88

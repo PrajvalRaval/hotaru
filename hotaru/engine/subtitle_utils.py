@@ -12,7 +12,7 @@ def is_likely_song(text: str) -> bool:
     return False
 
 def resegment_results(result: Dict, max_line_width: int, max_line_count: int, language: str = "ja") -> List[Dict]:
-    """Precision 'Speaker-Aware' Resegmenter."""
+    """Precision 'Speaker-Aware' Resegmenter with Duration Guards."""
     if not result["segments"]: return []
 
     effective_width = 24 if language == "ja" else max_line_width
@@ -28,8 +28,10 @@ def resegment_results(result: Dict, max_line_width: int, max_line_count: int, la
         
         if not words:
             if segment.get("text", "").strip():
+                # Ensure minimum 100ms duration
+                s_end = max(segment["end"], segment["start"] + 0.1)
                 new_segments.append({
-                    "start": segment["start"], "end": segment["end"],
+                    "start": segment["start"], "end": s_end,
                     "text": segment["text"].strip(), "speaker": current_speaker
                 })
             continue
@@ -43,18 +45,26 @@ def resegment_results(result: Dict, max_line_width: int, max_line_count: int, la
             is_punc = any(p in w_text for p in punctuation)
             speaker_changed = (w_speaker != current_speaker and len(buffer_words) > 0)
             
+            # Gap detection (>0.3s)
             has_gap = False
             if i < len(words) - 1:
                 next_w = words[i+1]
-                if w_end and next_w.get("start"):
-                    if (next_w["start"] - w_end) > 0.4: has_gap = True
+                next_start = next_w.get("start")
+                if next_start is not None and w_end is not None:
+                    # 0.3s is the sweet spot for clean vocal tracks
+                    if (next_start - w_end) > 0.3: has_gap = True
 
             word_stripped = w_text.strip()
             needs_wrap = line_len > 0 and (line_len + len(word_stripped)) > effective_width
             
             if len(buffer_words) > 0 and (is_punc or has_gap or speaker_changed or (needs_wrap and line_count >= max_line_count)):
-                s_start = buffer_words[0].get("start", w_start if w_start else segment["start"])
-                s_end = buffer_words[-1].get("end", w_start if w_start else segment["end"])
+                s_start = buffer_words[0].get("start", segment["start"])
+                # Use current word start as end fallback to prevent overlap
+                s_end = buffer_words[-1].get("end", w_start if w_start is not None else segment["end"])
+                # Final safety check
+                if s_start is None: s_start = segment["start"]
+                if s_end is None: s_end = segment["end"]
+                s_end = max(s_end, s_start + 0.1)
                 
                 if language == "ja":
                     s_text = "".join([w["word"] for w in buffer_words]).replace(" ", "")
@@ -79,7 +89,9 @@ def resegment_results(result: Dict, max_line_width: int, max_line_count: int, la
 
         if buffer_words:
             s_start = buffer_words[0].get("start", segment["start"])
-            s_end = buffer_words[-1].get("end", segment["end"])
+            s_end = buffer_words[-1].get("end", s_start + 0.1)
+            s_end = max(s_end, s_start + 0.1)
+            
             if language == "ja":
                 s_text = "".join([w["word"] for w in buffer_words]).replace(" ", "")
             else:
@@ -87,9 +99,11 @@ def resegment_results(result: Dict, max_line_width: int, max_line_count: int, la
             if s_text.strip():
                 new_segments.append({"start": s_start, "end": s_end, "text": s_text.strip(), "speaker": current_speaker})
 
+    # Collision Guard: Tighten gaps while maintaining validity
     for i in range(len(new_segments) - 1):
         if new_segments[i]["end"] > new_segments[i+1]["start"]:
-            new_segments[i]["end"] = new_segments[i+1]["start"]
+            # Snap to next start, but keep at least 100ms duration
+            new_segments[i]["end"] = max(new_segments[i+1]["start"], new_segments[i]["start"] + 0.1)
 
     return new_segments
 

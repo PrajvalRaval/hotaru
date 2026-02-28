@@ -13,32 +13,48 @@
 
 ---
 
+## 🚀 Why Hotaru?
+
+Stop waiting for fan-subs or settling for literal, "robotic" official translations. Hotaru gives you the power to create beautiful, context-aware subtitles on your own hardware.
+
+*   **🎯 Precision Timing:** Frame-perfect alignment that snaps to speech using word-level phoneme data.
+*   **🌎 Cultural Accuracy:** AI personas that understand honorifics, pro-drop subjects, and character "voice."
+*   **🔒 Complete Privacy:** No cloud APIs, no data harvesting, no subscription fees.
+
+---
+
 ## ✨ Key Features
 
-*   **🎯 Word-Level Precision:** Powered by **WhisperX phoneme alignment** for frame-perfect subtitle timing that never drifts, even during rapid-fire dialogue or overlaps.
-*   **👥 Speaker-Aware Timing:** Monitors speakers at the **word level**. If Person A is interrupted by Person B, Hotaru instantly flushes the buffer and starts a new subtitle block, preventing "spoiler" dialogue and merging.
+*   **🎤 Vocal Isolation (Phase 0):** Integrated **Demucs (htdemucs)** to strip BGM and SFX. Feed pristine, voice-only tracks into WhisperX for 100% deterministic VAD and zero hallucinations.
+*   **🎯 Word-Level Precision:** Powered by **WhisperX phoneme alignment** for frame-perfect subtitle timing that never drifts.
+*   **👥 Speaker-Aware Timing:** Monitors speakers at the **word level**, ensuring Person B's text never "spoils" Person A's dialogue.
 *   **🌎 Two-Pass Localization:**
     *   **Pass 1 (Specialist):** Context-aware translation that recovers dropped subjects and preserves honorifics.
-    *   **Pass 2 (Grammarian):** Refines punctuation, capitalization, and flow using a **256K context window** to link split segments with ellipses (...).
-*   **🎵 Automated Song Filtering:** Integrated **Heuristic Song Detection** and strict **VAD (0.50 Onset)** to proactively skip opening/ending themes and background music hallucinations.
-*   **✂️ Deterministic Resegmentation:** A robust **Buffer-and-Flush** algorithm that strictly respects Whisper segment boundaries and silence gaps (>0.4s) to ensure subtitles clear instantly when speech stops.
-*   **📐 Custom Alignment Models:** Full support for specifying specialized Hugging Face model IDs (e.g., `jonatasgrosman/wav2vec2-large-xlsr-53-japanese`) for superior word-level timing.
+    *   **Pass 2 (Director):** Refines punctuation and flow using a **256K context window** to maintain narrative continuity.
+*   **🎵 Automated Song Filtering:** Integrated **Heuristic Song Detection** and strict **VAD (0.50 Onset)** to skip musical themes.
 *   **💾 Persistent Task Management:** A **uTorrent-inspired dashboard** that persists state to disk. Close your browser, refresh the page, or restart the app—your translation queue and progress stay exactly where you left them.
-*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an adaptive task tray for power users. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a live console.
-*   **☢️ Nuclear VRAM/RAM Reset:** Advanced memory orchestration designed for **30B+ parameter models** on consumer GPUs. Hotaru aggressively purges both GPU and System memory between phases.
+*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an independent task tray. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a live console.
+*   **☢️ Nuclear VRAM Reset:** Advanced memory orchestration between transcription and translation phases.
+
+---
+
+## 🎨 Sleek UI/UX
+
+Hotaru features a professional **Teal-Dark Aesthetic** designed for long-session productivity:
+*   **Fixed Sidebar:** Instant access to System Status, Transcription settings, and Ollama configuration.
+*   **Adaptive Task Tray:** A docked, collapsible log console that moves with your sidebar.
+*   **One-Click Preview:** View and edit your generated SRTs directly in the browser before downloading.
+*   **Segmented Updates:** Truly independent UI fragments ensure hardware stats and logs update without flickering the task list.
 
 ---
 
 ## ⚡ Technical Optimizations
 
-### 🚀 Professional Formatting Constraints
-Configure `Max Width` and `Max Lines` directly from the UI. Hotaru's resegmenter ensures Japanese text is capped at **24 characters** before translation, resulting in English dialogue that fits perfectly within subtitle boundaries.
+### 🚀 Segmented Architecture
+Hotaru is built as a modular package. The UI, Engine, and Common utilities are strictly decoupled to ensure high performance and zero WebSocket noise.
 
-### ⚖️ Dynamic Translation Tolerance
-Includes a configurable **Percentage-Based Tolerance** slider. Control exactly how many missing or malformed lines are acceptable before the engine triggers an automatic retry.
-
-### 🛡️ System RAM Guard
-The engine actively monitors host RAM availability. If system memory drops below 1.5GB, Hotaru pauses and triggers **Aggressive Garbage Collection** to prevent OOM termination.
+### 🛡️ Resource Guard
+Actively monitors host RAM and VRAM availability, triggering aggressive garbage collection to prevent OOM termination.
 
 ---
 
@@ -46,7 +62,7 @@ The engine actively monitors host RAM availability. If system memory drops below
 
 ### 1. Prerequisites
 *   **Hardware:** NVIDIA GPU (24GB VRAM recommended for 30B+ models).
-*   **Backend:** [Ollama](https://ollama.com/) installed and running (`ollama serve`).
+*   **Backend:** [Ollama](https://ollama.com/) installed and running.
 *   **System:** `ffmpeg` installed on your host OS.
 
 ### 2. Quick Start
@@ -55,34 +71,25 @@ The engine actively monitors host RAM availability. If system memory drops below
 git clone https://github.com/yourusername/hotaru.git
 cd hotaru
 
-# Install Python requirements
-pip install -r requirements.txt
-
 # Launch the dashboard
-source venv/bin/activate
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
 ---
 
 ## 🧠 The AI Pipeline
-1.  **Extract:** Automated high-fidelity audio extraction from MP4/MKV containers.
-2.  **ASR:** Japanese transcription via **WhisperX** with **0.50 VAD Onset** for noise filtering.
+1.  **Isolate:** Vocal Isolation (Demucs) to strip BGM/SFX.
+2.  **Transcribe:** Japanese transcription via **WhisperX** with **0.50 VAD Onset**.
 3.  **Align:** Phoneme-level refinement using standard or custom **Wav2Vec2** models.
 4.  **Resegment:** Speaker-aware **Buffer-and-Flush** splitting based on natural pauses and density.
 5.  **Translate:** Localization pass using **Anime Localization Specialist** persona.
-6.  **Smooth:** Final refinement pass using **Anime Script Editor and Grammarian** persona with MoE-optimized context linking.
+6.  **Smooth:** Final refinement pass using **Anime Script Editor and Director** persona with MoE-optimized context linking.
 
 ---
 
 ## 🔒 Privacy First
-No cloud APIs. No subscription fees. No data harvesting.
-**Everything stays on your machine.**
-
----
-
-## 🤝 Contributing
-Hotaru is an evolving project. Feel free to open issues or submit PRs to improve the translation heuristics, UI responsiveness, or VRAM management.
+No cloud APIs. No data harvesting. **Everything stays on your machine.**
 
 ---
 

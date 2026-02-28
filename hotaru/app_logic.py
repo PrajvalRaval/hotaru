@@ -20,22 +20,22 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
             
             # Robust stage/progress parsing from message
             new_stage, new_prog = task_data["stage"], task_data["progress"]
-            if "PHASE 1" in msg or "Loading audio" in msg: new_stage, new_prog = "🎧 Transcription", 10
+            if "PHASE 0" in msg or "Stripping SFX" in msg: new_stage, new_prog = "🎤 Vocal Isolation", 5
+            elif "PHASE 1" in msg or "Loading audio" in msg: new_stage, new_prog = "🎧 Transcription", 10
             elif "Transcribing" in msg: new_stage, new_prog = "🗣️ Transcribing", 20
             elif "PHASE 2" in msg or "Aligning" in msg: new_stage, new_prog = "📏 Aligning", 40
             elif "manual timing offset" in msg: new_stage, new_prog = "⏱️ Offsetting", 50
             elif "Identifying speakers" in msg: new_stage, new_prog = "👥 Diarizing", 55
             elif "Resegmenting" in msg: new_stage, new_prog = "📦 Resegmenting", 60
             elif "PHASE 3" in msg or "Purging" in msg: new_stage, new_prog = "🧹 Resetting VRAM", 65
-            elif "PHASE 4" in msg or "Translating" in msg:
+            elif "PHASE 4" in msg or "Localizing" in msg:
                 match = re.search(r"chunk (\d+)/(\d+)", msg)
                 if match:
                     p, t = int(match.group(1)), int(match.group(2))
-                    new_stage = f"🌎 Translating ({p}/{t})"
-                    new_prog = 70 + int((p/t)*15)
-                else: new_stage, new_prog = "🌎 Translating", 75
-            elif "PHASE 5" in msg or "refinement" in msg: new_stage, new_prog = "🪄 AI Polishing", 90
-            elif "AI Polish complete" in msg: new_stage, new_prog = "💾 Finalizing SRT", 98
+                    new_stage = f"🌎 Localizing ({p}/{t})"
+                    new_prog = 70 + int((p/t)*28)
+                else: new_stage, new_prog = "🌎 Localizing", 75
+            elif "Localization complete" in msg: new_stage, new_prog = "💾 Finalizing SRT", 98
             
             task_data["stage"], task_data["progress"] = new_stage, new_prog
             save_task_state(all_tasks)
