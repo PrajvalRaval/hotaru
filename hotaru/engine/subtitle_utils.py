@@ -22,10 +22,11 @@ def generate_srt(segments: List[Dict], output_path: str):
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(srt.compose(srt_segments))
 
-def snap_segments_to_words(segments: List[Dict], max_pause: float = 0.4, max_chars: int = 40) -> List[Dict]:
+def snap_segments_to_words(segments: List[Dict], max_pause: float = 0.4, max_chars: int = 40, min_duration: float = 1.5) -> List[Dict]:
     """
-    A robust, 3-pass Word Bounding algorithm that repairs missing timestamps,
-    ignores segment boundaries, and enforces strict silence cuts.
+    A robust, 4-pass Word Bounding algorithm that repairs missing timestamps,
+    ignores segment boundaries, enforces strict silence cuts, and ensures
+    minimum reading duration via look-ahead padding.
     """
     
     # --- PASS 1: Flatten and Clean ---
@@ -71,7 +72,7 @@ def snap_segments_to_words(segments: List[Dict], max_pause: float = 0.4, max_cha
 
     # --- PASS 3: Safe Chunking & Snapping ---
     # Rebuild the segments using the repaired continuous stream.
-    new_segments = []
+    raw_chunks = []
     current_chunk = []
     current_len = 0
     
@@ -87,7 +88,7 @@ def snap_segments_to_words(segments: List[Dict], max_pause: float = 0.4, max_cha
             
             if is_long_pause or is_char_limit or speaker_changed:
                 # Flush block
-                new_segments.append({
+                raw_chunks.append({
                     "start": current_chunk[0]["start"],
                     "end": current_chunk[-1]["end"],
                     "text": "".join([w["text"] for w in current_chunk]),
@@ -101,12 +102,35 @@ def snap_segments_to_words(segments: List[Dict], max_pause: float = 0.4, max_cha
         current_len += len(word["text"])
         
     if current_chunk:
-        new_segments.append({
+        raw_chunks.append({
             "start": current_chunk[0]["start"],
             "end": current_chunk[-1]["end"],
             "text": "".join([w["text"] for w in current_chunk]),
             "speaker": current_chunk[0]["speaker"],
             "words": current_chunk
         })
+
+    # --- PASS 4: Minimum Duration Padding & Overlap Protection ---
+    # Enforce Netflix/BBC standards for reading speed.
+    min_gap = 0.1 # 100ms blank screen between subtitles
+    for i, chunk in enumerate(raw_chunks):
+        original_duration = chunk["end"] - chunk["start"]
+        
+        if original_duration < min_duration:
+            desired_end = chunk["start"] + min_duration
+            
+            # Check if stretching it will crash into the NEXT subtitle
+            if i < len(raw_chunks) - 1:
+                next_start = raw_chunks[i+1]["start"]
+                max_allowed_end = next_start - min_gap
                 
-    return new_segments
+                # Stretch it to the minimum duration, OR right up until the next line starts
+                chunk["end"] = min(desired_end, max_allowed_end)
+            else:
+                # Last line of the script can stretch freely
+                chunk["end"] = desired_end
+                
+            # Failsafe: Ensure we never shrink the line
+            chunk["end"] = max(chunk["end"], chunk["start"] + original_duration)
+                
+    return raw_chunks

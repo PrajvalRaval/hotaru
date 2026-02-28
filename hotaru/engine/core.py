@@ -180,9 +180,9 @@ class TranscribeEngine:
             
             # --- WORD-BASED SNAPPING (Perfectly Snapped Subtitles) ---
             if enable_word_snapping:
-                log("🧪 [EXPERIMENTAL] Generating perfectly snapped subtitles from word bounding boxes...")
+                log("🧪 [EXPERIMENTAL] Generating perfectly snapped subtitles with 1.5s readable padding...")
                 try:
-                    snapped_segments = snap_segments_to_words(result["segments"], max_pause=0.4, max_chars=40)
+                    snapped_segments = snap_segments_to_words(result["segments"], max_pause=0.4, max_chars=40, min_duration=1.5)
                     snapped_path = os.path.join(OUTPUT_DIR, f"{base_name}_perfectly_snapped.srt")
                     generate_srt(snapped_segments, snapped_path)
                     log(f"💾 Saved perfectly snapped SRT: {os.path.basename(snapped_path)}")
