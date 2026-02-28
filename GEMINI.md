@@ -26,6 +26,8 @@ To provide the highest quality Japanese-to-English subtitles for anime using a h
 ### 3. One-Pass Localization Architecture
 - **Direct-to-Fansub Pass:** Leverage the **Qwen3 30B MoE** parallel reasoning capabilities to perform translation and script doctoring in a SINGLE pass.
 - **Context Utilization:** Use the **256K context window** to simultaneously handle subject recovery, honorific retention, and grammatical stitching (using ellipses `...` for split thoughts).
+- **Failsafe Parsing:** You MUST explicitly anchor translated lines to their index (`Line X:`) using Regex. If a line is skipped by the LLM, the parser must intercept the skip and inject `[UNTRANSLATED]` to prevent Array Desync (The Zip Trap).
+- **Smart Fallback (Dynamic Chunking):** Hardcode a base chunk size (25 lines) and explicitly remove manual chunk toggles from the UI. If the LLM misses lines beyond the tolerance floor (2 lines) or hits a token limit (`done_reason="length"`), the engine MUST automatically divide the chunk in half and retry recursively.
 - **Density Guard:** Cap Japanese segment width at **24 characters** to ensure English translations adhere to professional subtitle layout standards.
 - **Song Detection:** Utilize a text-based heuristic (symbols, repetition, density) combined with **0.50 VAD Onset** to proactively filter musical themes.
 

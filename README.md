@@ -31,6 +31,9 @@ Stop waiting for fan-subs or settling for literal, "robotic" official translatio
 *   **🌎 One-Pass Localization:**
     *   **Direct-to-Fansub:** Context-aware translation that recovers dropped subjects and preserves honorifics.
     *   **Blind Context Inference:** Leverages a **256K context window** to deduce speaker changes and maintain narrative continuity without relying on hardcoded speaker tags.
+*   **🛡️ Resilient LLM Parsing:**
+    *   **Failsafe Parser:** Strict regex anchoring prevents the "Zip Desync Trap." If the LLM hallucinates and skips a line, it seamlessly falls back to Japanese, maintaining 100% frame-perfect subtitle alignment.
+    *   **Smart Fallback:** Integrates dynamic chunk reduction (Divide & Conquer). If a token limit is exhausted, it automatically splits the workload to guarantee successful generation.
 *   **🎵 Automated Song Filtering:** Integrated **Heuristic Song Detection** and strict **VAD (0.50 Onset)** to skip musical themes.
 *   **💾 Persistent Task Management:** A **uTorrent-inspired dashboard** that persists state to disk. Close your browser, refresh the page, or restart the app—your translation queue and progress stay exactly where you left them.
 *   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an independent task tray. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a live console.
@@ -85,8 +88,7 @@ streamlit run app.py
 2.  **Transcribe:** Japanese transcription via **WhisperX** with **0.50 VAD Onset**.
 3.  **Align:** Phoneme-level refinement using standard or custom **Wav2Vec2** models.
 4.  **Resegment:** Speaker-aware **Buffer-and-Flush** splitting based on natural pauses and density.
-5.  **Translate:** Localization pass using **Anime Localization Specialist** persona.
-6.  **Smooth:** Final refinement pass using **Anime Script Editor and Director** persona with MoE-optimized context linking.
+5.  **Localize:** One-pass localization and polishing using the **Anime Localization Director** persona with MoE-optimized context linking and blind context inference.
 
 ---
 
