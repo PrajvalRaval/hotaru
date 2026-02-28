@@ -54,7 +54,8 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
             cancel_check=cancel_check,            max_line_width=config["max_width"],
             max_line_count=config["max_lines"],
             align_model=config["align_model"],
-            whisper_chunk_size=config["whisper_chunk"]
+            whisper_chunk_size=config["whisper_chunk"],
+            enable_word_snapping=config.get("word_snapping", False)
         )
         
         # Success

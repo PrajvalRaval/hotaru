@@ -56,7 +56,8 @@ class TranscribeEngine:
                       timing_offset: float = 0.0,
                       tolerance_pct: int = 5, cancel_check: Optional[Callable[[], bool]] = None,
                       max_line_width: int = 42, max_line_count: int = 2,
-                      align_model: Optional[str] = None, whisper_chunk_size: int = 30) -> List[Dict[str, Any]]:        
+                      align_model: Optional[str] = None, whisper_chunk_size: int = 30,
+                      enable_word_snapping: bool = False) -> List[Dict[str, Any]]:        
         def log(msg: str):
             # The global logger now handles [HH:MM:SS] LEVEL prefixes
             if log_callback: log_callback(msg)
@@ -178,16 +179,19 @@ class TranscribeEngine:
                 logger.warning(f"Failed to save raw alignment debug SRT: {e}")
             
             # --- WORD-BASED SNAPPING (Perfectly Snapped Subtitles) ---
-            log("🧪 Generating perfectly snapped subtitles from word bounding boxes...")
-            try:
-                snapped_segments = snap_segments_to_words(result["segments"], max_pause=0.4, max_chars=40)
-                snapped_path = os.path.join(OUTPUT_DIR, f"{base_name}_perfectly_snapped.srt")
-                generate_srt(snapped_segments, snapped_path)
-                log(f"💾 Saved perfectly snapped SRT: {os.path.basename(snapped_path)}")
-                # We update result["segments"] to use these perfectly snapped versions for downstream tasks
-                result["segments"] = snapped_segments
-            except Exception as e:
-                logger.error(f"❌ Failed to generate snapped subtitles: {e}")
+            if enable_word_snapping:
+                log("🧪 [EXPERIMENTAL] Generating perfectly snapped subtitles from word bounding boxes...")
+                try:
+                    snapped_segments = snap_segments_to_words(result["segments"], max_pause=0.4, max_chars=40)
+                    snapped_path = os.path.join(OUTPUT_DIR, f"{base_name}_perfectly_snapped.srt")
+                    generate_srt(snapped_segments, snapped_path)
+                    log(f"💾 Saved perfectly snapped SRT: {os.path.basename(snapped_path)}")
+                    # We update result["segments"] to use these perfectly snapped versions for downstream tasks
+                    result["segments"] = snapped_segments
+                except Exception as e:
+                    logger.error(f"❌ Failed to generate snapped subtitles: {e}")
+            else:
+                log("⏩ Skipping experimental word-based snapping.")
 
             # Use raw model segments directly (Removing Janome spaces for translation)
             segmented_ja = []

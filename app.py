@@ -111,7 +111,8 @@ def render_task_card(name):
                     "max_width": st.session_state.max_line_width_input,
                     "max_lines": st.session_state.max_line_count_input,
                     "align_model": st.session_state.align_model_input,
-                    "whisper_chunk": st.session_state.whisper_chunk_size_input
+                    "whisper_chunk": st.session_state.whisper_chunk_size_input,
+                    "word_snapping": st.session_state.word_snapping_toggle
                 }
                 t = threading.Thread(target=run_engine_thread, args=(name, task, st.session_state.tasks, config, None, st.session_state.SHUTDOWN_EVENT), daemon=False)
                 add_script_run_ctx(t); t.start()

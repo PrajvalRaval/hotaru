@@ -55,6 +55,10 @@ def render_sidebar(ollama_models):
             st.text_input("📐 Alignment Model", value="jonatasgrosman/wav2vec2-large-xlsr-53-japanese", key="align_model_input")
             st.number_input("✂️ Whisper Chunk Size (s)", min_value=1, max_value=60, value=30, key="whisper_chunk_size_input")
             st.slider("⏱️ Timing Offset (s)", -2.0, 2.0, 0.0, 0.05, key="timing_offset_slider")
+            
+            st.markdown("---")
+            st.markdown("### 🧪 Experimental")
+            st.toggle("⚡ Word-Based Snapping", value=False, help="Strictly snap subtitles to word bounding boxes. Prevents subtitles from stretching across silences.", key="word_snapping_toggle")
 
         with st.expander("🌎 Translation", expanded=False):
             st.text_input("🏠 Ollama Host", value="http://localhost:11434", key="ollama_host")
