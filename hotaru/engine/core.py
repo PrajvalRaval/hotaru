@@ -71,9 +71,11 @@ class TranscribeEngine:
 
         # Initialize tracking variables for cleanup
         temp_vocal_path = None
+        from hotaru.common.constants import UPLOAD_DIR, OUTPUT_DIR
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        
         try:
             # 0. Vocal Isolation (The Teardown)
-            from hotaru.common.constants import UPLOAD_DIR
             log("═"*40)
             log(f"🎤 PHASE 0: VOCAL ISOLATION - {os.path.basename(video_path)}")
             log("═"*40)
@@ -100,8 +102,6 @@ class TranscribeEngine:
 
             # --- DEBUG EXPORT: RAW TRANSCRIPTION ---
             try:
-                from hotaru.common.constants import OUTPUT_DIR
-                base_name = os.path.splitext(os.path.basename(video_path))[0]
                 raw_trans_path = os.path.join(OUTPUT_DIR, f"{base_name}_raw_transcription.srt")
                 generate_srt(result["segments"], raw_trans_path)
                 log(f"💾 Saved raw transcription: {os.path.basename(raw_trans_path)}")
@@ -205,6 +205,14 @@ class TranscribeEngine:
                         "start": s_start, "end": s_end, "text": s_text, "speaker": speaker
                     })
             check_abort()
+
+            # --- DEBUG EXPORT: MORPHOLOGICAL CHUNKING ---
+            try:
+                chunked_path = os.path.join(OUTPUT_DIR, f"{base_name}_morphological_chunked.srt")
+                generate_srt(segmented_ja, chunked_path)
+                log(f"💾 Saved morphological chunked SRT: {os.path.basename(chunked_path)}")
+            except Exception as e:
+                logger.warning(f"Failed to save morphological chunked debug SRT: {e}")
 
             # 5. VRAM Reset
             log("═"*40)
