@@ -17,7 +17,7 @@
 
 Stop waiting for fan-subs or settling for literal, "robotic" official translations. Hotaru gives you the power to create beautiful, context-aware subtitles on your own hardware.
 
-*   **🎯 Precision Timing:** Frame-perfect alignment that snaps to speech using word-level phoneme data.
+*   **🎯 Context Aware:** Frame-perfect alignment that snaps to speech using word-level phoneme data.
 *   **🌎 Cultural Accuracy:** AI personas that understand honorifics, pro-drop subjects, and character "voice."
 *   **🔒 Complete Privacy:** No cloud APIs, no data harvesting, no subscription fees.
 
