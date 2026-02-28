@@ -32,12 +32,10 @@ class TranscribeEngine:
         self.model_size = model_size
         self.translator = OllamaTranslator(host=ollama_host)
         
-        # VAD Config
+        # VAD Config (Aggressive Initialization to prevent 30s blobs)
         vad_options = {
-            "vad_onset": 0.50,
-            "vad_offset": 0.363,
-            "min_silence_duration_ms": 1000,
-            "speech_pad_ms": 400
+            "vad_onset": 0.500,
+            "vad_offset": 0.363
         }
         
         self.model = whisperx.load_model(
@@ -133,16 +131,71 @@ class TranscribeEngine:
                 diarize_segments = self.diarize_model(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
 
-            # 4. Extract Segments (Bypassing Custom Resegmentation)
-            log("📦 Extracting WhisperX aligned segments...")
+            # 4. Extract Segments and Hard-Wrap
+            log(f"📦 Extracting WhisperX segments (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
             segmented_ja = []
             for seg in result["segments"]:
-                segmented_ja.append({
-                    "start": seg["start"],
-                    "end": seg["end"],
-                    "text": seg["text"].strip(),
-                    "speaker": seg.get("speaker", "UNKNOWN")
-                })
+                words = seg.get("words", [])
+                speaker = seg.get("speaker", "UNKNOWN")
+                
+                if not words:
+                    if seg.get("text", "").strip():
+                        segmented_ja.append({
+                            "start": seg["start"],
+                            "end": seg["end"],
+                            "text": seg["text"].strip(),
+                            "speaker": speaker
+                        })
+                    continue
+                
+                # Hard-wrap the subtitles based on character count rather than spaces
+                current_buffer = []
+                current_len = 0
+                line_count = 1
+                
+                for w in words:
+                    w_text = w["word"].strip()
+                    w_len = len(w_text)
+                    
+                    if current_len + w_len > max_line_width:
+                        if line_count < max_line_count:
+                            line_count += 1
+                            current_len = w_len
+                            current_buffer.append(w)
+                        else:
+                            if current_buffer:
+                                s_start = current_buffer[0].get("start", seg["start"])
+                                s_end = current_buffer[-1].get("end", seg["end"])
+                                if s_start is None: s_start = seg["start"]
+                                if s_end is None: s_end = seg["end"]
+                                
+                                s_text = "".join([bw["word"] for bw in current_buffer])
+                                segmented_ja.append({
+                                    "start": s_start,
+                                    "end": s_end,
+                                    "text": s_text.strip(),
+                                    "speaker": speaker
+                                })
+                            current_buffer = [w]
+                            current_len = w_len
+                            line_count = 1
+                    else:
+                        current_len += w_len
+                        current_buffer.append(w)
+                
+                if current_buffer:
+                    s_start = current_buffer[0].get("start", seg["start"])
+                    s_end = current_buffer[-1].get("end", seg["end"])
+                    if s_start is None: s_start = seg["start"]
+                    if s_end is None: s_end = seg["end"]
+                    
+                    s_text = "".join([bw["word"] for bw in current_buffer])
+                    segmented_ja.append({
+                        "start": s_start,
+                        "end": s_end,
+                        "text": s_text.strip(),
+                        "speaker": speaker
+                    })
             check_abort()
 
             # 5. VRAM Reset
