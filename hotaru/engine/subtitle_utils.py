@@ -24,67 +24,89 @@ def generate_srt(segments: List[Dict], output_path: str):
 
 def snap_segments_to_words(segments: List[Dict], max_pause: float = 0.4, max_chars: int = 40) -> List[Dict]:
     """
-    Refines segments by looking strictly at word-level timings.
-    Forces a cut if silence exceeds max_pause or character count exceeds max_chars.
-    This bypasses the loose 'segment bounding box' and snaps strictly to audio.
+    A robust, 3-pass Word Bounding algorithm that repairs missing timestamps,
+    ignores segment boundaries, and enforces strict silence cuts.
     """
-    new_segments = []
     
+    # --- PASS 1: Flatten and Clean ---
+    # Strip artificial segment boundaries and create a continuous stream.
+    all_words = []
     for seg in segments:
-        words = seg.get("words", [])
-        if not words:
-            new_segments.append(seg)
-            continue
+        seg_speaker = seg.get("speaker", "UNKNOWN")
+        for w in seg.get("words", []):
+            text = w.get("word", "").replace(" ", "")
+            if not text: continue
             
-        buffer = []
-        current_len = 0
-        
-        for w in words:
-            # Skip words without timing
-            if "start" not in w or "end" not in w:
-                buffer.append(w)
-                continue
-                
-            if buffer:
-                # Get the end time of the last timed word in buffer
-                last_end = next((x["end"] for x in reversed(buffer) if "end" in x), None)
-                
-                # Triggers: Silence or Character Limit
-                pause_too_long = last_end is not None and (w["start"] - last_end > max_pause)
-                word_text = w.get("word", "").strip().replace(" ", "")
-                char_limit_hit = (current_len + len(word_text)) > max_chars
-                
-                if pause_too_long or char_limit_hit:
-                    # Flush the current buffer into a perfectly snapped segment
-                    flush_start = next((x["start"] for x in buffer if "start" in x), seg["start"])
-                    flush_end = last_end if last_end is not None else w["start"]
-                    flush_text = "".join([x.get("word", "") for x in buffer]).replace(" ", "").strip()
-                    
-                    if flush_text:
-                        new_segments.append({
-                            "start": flush_start,
-                            "end": flush_end,
-                            "text": flush_text,
-                            "words": buffer,
-                            "speaker": seg.get("speaker", "UNKNOWN")
-                        })
-                    buffer = []
-                    current_len = 0
+            all_words.append({
+                "text": text,
+                "start": w.get("start"),
+                "end": w.get("end"),
+                "speaker": w.get("speaker", seg_speaker)
+            })
+
+    if not all_words:
+        return segments
+
+    # --- PASS 2: Repair and Interpolate ---
+    # Fix missing timestamps by interpolating from neighbors.
+    for i, word in enumerate(all_words):
+        # Fix missing Start Time
+        if word["start"] is None:
+            if i > 0 and all_words[i-1]["end"] is not None:
+                word["start"] = all_words[i-1]["end"] + 0.001
+            else:
+                # Fallback to the very beginning or next available start
+                word["start"] = 0.0
+
+        # Fix missing End Time
+        if word["end"] is None:
+            if i < len(all_words) - 1 and all_words[i+1]["start"] is not None:
+                word["end"] = all_words[i+1]["start"] - 0.001
+            else:
+                word["end"] = word["start"] + 0.1 # 100ms fallback
+
+        # Fix rounding errors (Start > End)
+        if word["start"] > word["end"]:
+            word["end"] = word["start"] + 0.05
+
+    # --- PASS 3: Safe Chunking & Snapping ---
+    # Rebuild the segments using the repaired continuous stream.
+    new_segments = []
+    current_chunk = []
+    current_len = 0
+    
+    for i, word in enumerate(all_words):
+        if current_chunk:
+            last_word = current_chunk[-1]
+            pause_duration = word["start"] - last_word["end"]
             
-            buffer.append(w)
-            current_len += len(w.get("word", "").strip().replace(" ", ""))
+            # Triggers: Silence, Character Limit, or Speaker Change
+            is_long_pause = pause_duration > max_pause
+            is_char_limit = (current_len + len(word["text"])) > max_chars
+            speaker_changed = word["speaker"] != current_chunk[0]["speaker"]
             
-        if buffer:
-            flush_start = next((x["start"] for x in buffer if "start" in x), seg["start"])
-            flush_end = next((x["end"] for x in reversed(buffer) if "end" in x), seg["end"])
-            flush_text = "".join([x.get("word", "") for x in buffer]).replace(" ", "").strip()
-            if flush_text:
+            if is_long_pause or is_char_limit or speaker_changed:
+                # Flush block
                 new_segments.append({
-                    "start": flush_start,
-                    "end": flush_end,
-                    "text": flush_text,
-                    "words": buffer,
-                    "speaker": seg.get("speaker", "UNKNOWN")
+                    "start": current_chunk[0]["start"],
+                    "end": current_chunk[-1]["end"],
+                    "text": "".join([w["text"] for w in current_chunk]),
+                    "speaker": current_chunk[0]["speaker"],
+                    "words": current_chunk
                 })
+                current_chunk = []
+                current_len = 0
+                
+        current_chunk.append(word)
+        current_len += len(word["text"])
+        
+    if current_chunk:
+        new_segments.append({
+            "start": current_chunk[0]["start"],
+            "end": current_chunk[-1]["end"],
+            "text": "".join([w["text"] for w in current_chunk]),
+            "speaker": current_chunk[0]["speaker"],
+            "words": current_chunk
+        })
                 
     return new_segments
