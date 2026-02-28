@@ -16,13 +16,15 @@
 ## ✨ Key Features
 
 *   **🎯 Word-Level Precision:** Powered by **WhisperX phoneme alignment** for frame-perfect subtitle timing that never drifts, even during rapid-fire dialogue or overlaps.
+*   **👥 Speaker-Aware Timing:** Monitors speakers at the **word level**. If Person A is interrupted by Person B, Hotaru instantly flushes the buffer and starts a new subtitle block, preventing "spoiler" dialogue and merging.
 *   **🌎 Two-Pass Localization:**
     *   **Pass 1 (Specialist):** Context-aware translation that recovers dropped subjects and preserves honorifics.
-    *   **Pass 2 (Grammarian):** Refines punctuation, capitalization, and flow while "stitching" together pre-split chunks into a professional script.
-*   **✂️ Hybrid Resegmentation:** Intelligent segment splitting based on **silence gaps (>1.0s)**, punctuation, and strict professional constraints (**Max 42 characters, Max 2 lines**).
+    *   **Pass 2 (Grammarian):** Refines punctuation, capitalization, and flow using a **256K context window** to link split segments with ellipses (...).
+*   **🎵 Automated Song Filtering:** Integrated **Heuristic Song Detection** and strict **VAD (0.50 Onset)** to proactively skip opening/ending themes and background music hallucinations.
+*   **✂️ Deterministic Resegmentation:** A robust **Buffer-and-Flush** algorithm that strictly respects Whisper segment boundaries and silence gaps (>0.4s) to ensure subtitles clear instantly when speech stops.
 *   **📐 Custom Alignment Models:** Full support for specifying specialized Hugging Face model IDs (e.g., `jonatasgrosman/wav2vec2-large-xlsr-53-japanese`) for superior word-level timing.
 *   **💾 Persistent Task Management:** A **uTorrent-inspired dashboard** that persists state to disk. Close your browser, refresh the page, or restart the app—your translation queue and progress stay exactly where you left them.
-*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an adaptive task tray for power users. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a docked, live-updating console.
+*   **🛠️ Proxmox-Style Monitoring:** Real-time system telemetry and an adaptive task tray for power users. Monitor **VRAM fluctuations**, CPU usage, and granular engine logs in a live console.
 *   **☢️ Nuclear VRAM/RAM Reset:** Advanced memory orchestration designed for **30B+ parameter models** on consumer GPUs. Hotaru aggressively purges both GPU and System memory between phases.
 
 ---
@@ -30,13 +32,13 @@
 ## ⚡ Technical Optimizations
 
 ### 🚀 Professional Formatting Constraints
-Configure `Max Width` and `Max Lines` directly from the UI. Hotaru's hybrid splitter ensures that Japanese text is re-segmented *before* translation, resulting in English dialogue that fits perfectly within Netflix-standard subtitle boundaries.
+Configure `Max Width` and `Max Lines` directly from the UI. Hotaru's resegmenter ensures Japanese text is capped at **24 characters** before translation, resulting in English dialogue that fits perfectly within subtitle boundaries.
 
 ### ⚖️ Dynamic Translation Tolerance
-Includes a configurable **Percentage-Based Tolerance** slider. Control exactly how many missing or malformed lines are acceptable before the engine triggers an automatic retry, ensuring robust results even with experimental models.
+Includes a configurable **Percentage-Based Tolerance** slider. Control exactly how many missing or malformed lines are acceptable before the engine triggers an automatic retry.
 
 ### 🛡️ System RAM Guard
-The engine actively monitors host RAM availability. If system memory drops below 1.5GB during heavy model switching, Hotaru pauses and triggers **Aggressive Garbage Collection** to prevent the Linux OOM killer from terminating the process.
+The engine actively monitors host RAM availability. If system memory drops below 1.5GB, Hotaru pauses and triggers **Aggressive Garbage Collection** to prevent OOM termination.
 
 ---
 
@@ -56,7 +58,7 @@ cd hotaru
 # Install Python requirements
 pip install -r requirements.txt
 
-# Launch the dashboard (using the venv streamlit)
+# Launch the dashboard
 source venv/bin/activate
 streamlit run app.py
 ```
@@ -65,11 +67,11 @@ streamlit run app.py
 
 ## 🧠 The AI Pipeline
 1.  **Extract:** Automated high-fidelity audio extraction from MP4/MKV containers.
-2.  **ASR:** Japanese transcription via **WhisperX** with configurable **Chunk Size** and **Silero VAD**.
+2.  **ASR:** Japanese transcription via **WhisperX** with **0.50 VAD Onset** for noise filtering.
 3.  **Align:** Phoneme-level refinement using standard or custom **Wav2Vec2** models.
-4.  **Resegment:** Pre-translation splitting based on natural pauses and professional constraints.
+4.  **Resegment:** Speaker-aware **Buffer-and-Flush** splitting based on natural pauses and density.
 5.  **Translate:** Localization pass using **Anime Localization Specialist** persona.
-6.  **Smooth:** Final refinement pass using **Anime Script Editor and Grammarian** persona.
+6.  **Smooth:** Final refinement pass using **Anime Script Editor and Grammarian** persona with MoE-optimized context linking.
 
 ---
 

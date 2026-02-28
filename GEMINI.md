@@ -12,19 +12,16 @@ To provide the highest quality Japanese-to-English subtitles for anime using a h
 - **Fragmented UI Updates:** Global `st.rerun()` heartbeats are FORBIDDEN. All real-time telemetry (VRAM/RAM/Progress) MUST use `@st.fragment` to refresh isolated UI components, preventing script-wide re-execution and memory leaks.
 
 ### 2. Subtitle Timing & UI Dynamics
-- **Start/Pause Toggle:** The task action button MUST toggle between **▶ (Start)** and **⏸ (Stop)** based on real-time task status.
-- **Instant Removal & Abort:** Clicking **Remove (🗑)** must trigger immediate UI removal and raise an `InterruptedError` in the engine thread via a `cancel_check` callback that monitors task existence, status, and the global `SHUTDOWN_EVENT`.
-- **Residue Cleanup:** Task removal MUST proactively delete both the source video from `uploads/` and any partial/full SRT output from `output/`.
-- **Native Timing:** Rely on WhisperX's native segmentation and alignment outputs without additional manual splitting or post-merging logic.
+- **Deterministic Resegmentation:** Use a **Buffer-and-Flush** algorithm that strictly respects Whisper segment boundaries. NEVER allow a subtitle to cross a VAD-detected silence gap.
+- **Speaker-Aware Word Splitting:** Monitor speaker IDs at the **word level**. Trigger an instant buffer flush whenever the speaker changes to prevent dialogue merging and "spoiler" subtitles.
+- **Localized Fallbacks:** For unaligned words, use rhythmic interpolation relative to neighboring words. NEVER snap timing to the beginning of a 30-second Whisper block.
+- **Aggressive End-Padding:** Apply a tight (150-200ms) reading buffer only when speech is continuous. Clear the screen instantly if a silence gap (>0.4s) or segment boundary is reached.
 
-### 3. Two-Pass Translation Architecture
-- **Pass 1: Initial Translation:** Sent in batches (or single batch) with Speaker IDs provided for context. Focuses on accuracy and honorific retention.
-- **Pass 2: The "Subber's Polish":** Sends the entire translated transcript back to the LLM. Focuses on resolving subject ambiguity, improving dialogue flow, and ensuring comfortable reading speeds.
-- **"No Chunking" Mode:** For 256K context models (Qwen3), support a toggle-based `chunk_size=0` mode that sends the entire transcript in one batch for better narrative consistency and a ~3x speed boost.
-- **Stable Batching:** When chunking is enabled, use a numerical input (default 25) instead of a slider to prevent rapid UI-state mutations.
-- **Dynamic Tolerance:** Use a **Percentage-Based Tolerance** slider (default 5%) to determine acceptable missing lines before triggering a retry.
-- **Verbose Telemetry:** Translation logs MUST include total character counts, estimated tokens, and detailed parsing results (matched vs unmatched lines).
-- **Audio-Level Skipping:** Rely solely on Silero VAD (Voice Activity Detection) during the transcription phase to skip non-speech segments, including opening/ending themes and background music.
+### 3. Two-Pass Localization Architecture
+- **Pass 1: Specialist Translation:** Sent in batches with Speaker IDs. Focuses on subject recovery and honorific retention.
+- **Pass 2: Grammarian Polish:** Uses a **256K context window** (MoE optimized). Focuses on punctuation, flow, and linking split segments with ellipses (...) to maintain narrative continuity.
+- **Density Guard:** Cap Japanese segment width at **24 characters** to ensure English translations adhere to professional subtitle layout standards.
+- **Song Detection:** Utilize a text-based heuristic (symbols, repetition, density) combined with **0.50 VAD Onset** to proactively filter music and opening/ending themes.
 
 ### 4. Model Specifics (Anime-Whisper)
 - **Automatic Patching:** The `convert_anime_whisper.py` script MUST automatically patch the CTranslate2 `config.json` to use **128 Mel bins** (Whisper v3 requirement) and ensure all required preprocessor metadata is downloaded.
@@ -37,9 +34,8 @@ To provide the highest quality Japanese-to-English subtitles for anime using a h
 
 ### Logging & Thread Safety
 - **Context Attachment:** All background threads MUST use `add_script_run_ctx` to link to the Streamlit session context for safe UI interaction.
-- **Shutdown Handling:** Monitor a global `threading.Event()` for app shutdown to allow C++ extensions to unload gracefully, avoiding "terminate called without active exception" crashes.
+- **Shutdown Handling:** Monitor a global `threading.Event()` for app shutdown to allow C++ extensions to unload gracefully.
 - **httpx Silencing:** Set `logging.getLogger("httpx").setLevel(logging.WARNING)` to prevent Ollama API spam.
-- **Cached Model Fetching:** Fetch Ollama models using a cached function with a **10s TTL**.
 
 ## ⚠️ Known Version Constraints
 - **Streamlit >= 1.54.0:** Required for `@st.fragment` support.

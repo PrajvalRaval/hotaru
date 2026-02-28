@@ -55,9 +55,9 @@ class TranscribeEngine:
         # Explicit VAD options to skip music and intros:
         # onset/offset: lower values are more sensitive (more segments), 
         # higher values skip more (more aggressive).
-        # Restore official WhisperX defaults for stable performance.
+        # Aggressive VAD to skip music and non-speech more effectively.
         vad_options = {
-            "vad_onset": 0.363,
+            "vad_onset": 0.50, # Increased from 0.363 to skip singing/melodic noise
             "vad_offset": 0.363,
             "min_silence_duration_ms": 1000,
             "speech_pad_ms": 400
@@ -238,18 +238,36 @@ class TranscribeEngine:
                 else:
                     log(f"📦 Translating chunk {i//effective_chunk_size + 1}/{(len(segmented_ja) + effective_chunk_size - 1)//effective_chunk_size} ({len(chunk)} segments, ~{total_chars} chars).")
                 
-                # Always translate all segments in the chunk (relying on VAD to have skipped non-speech)
-                sub_chunk = chunk
-                translated_texts = self._translate_chunk_with_ollama(
-                    sub_chunk, 
-                    ollama_model, 
-                    tolerance_pct=tolerance_pct, 
-                    cancel_check=cancel_check,
-                    log_callback=log
-                )
-                
-                for j, trans_text in enumerate(translated_texts):
-                    chunk[j]["translated_text"] = trans_text
+                # Filter out likely songs before sending to AI to save tokens and improve quality
+                sub_chunk = []
+                song_indices = []
+                for idx, seg in enumerate(chunk):
+                    if self._is_likely_song(seg.get("text", "")):
+                        song_indices.append(idx)
+                    else:
+                        sub_chunk.append(seg)
+
+                if sub_chunk:
+                    translated_texts = self._translate_chunk_with_ollama(
+                        sub_chunk, 
+                        ollama_model, 
+                        tolerance_pct=tolerance_pct, 
+                        cancel_check=cancel_check,
+                        log_callback=log
+                    )
+                    
+                    # Re-map translated texts back to the original chunk, skipping songs
+                    sub_ptr = 0
+                    for idx in range(len(chunk)):
+                        if idx in song_indices:
+                            chunk[idx]["translated_text"] = "" # Discard song
+                        else:
+                            chunk[idx]["translated_text"] = translated_texts[sub_ptr]
+                            sub_ptr += 1
+                else:
+                    # Entire chunk was songs
+                    for seg in chunk:
+                        seg["translated_text"] = ""
                 
                 for seg in chunk:
                     translated_segments.append(seg)
@@ -457,18 +475,17 @@ class TranscribeEngine:
             "### ROLE:\n"
             "You are an expert Anime Script Editor and Grammarian. You are receiving a series of short, \"pre-split\" translation chunks that have been aligned to exact audio timestamps.\n\n"
             "### THE CHALLENGE:\n"
-            "Because the input text was \"chopped\" for timing, it often lacks punctuation and consistent sentence structure. Your job is to \"stitch\" these chunks back into a professional, flowing script without changing the timing of the segments.\n\n"
+            "Because the input text was \"chopped\" strictly for timing based on audio pauses, it often lacks punctuation. Some sentences may be split across segments.\n\n"
+            "### TASK:\n"
+            "Use your 256K context window to link these segments grammatically. If a character hasn't finished their thought at the end of a segment, use ellipses (...) to show continuity.\n\n"
             "### INPUT FORMAT:\n"
             "Each line is provided as: `Line X [SPEAKER_ID]: JA_TEXT -> EN_RAW_TEXT`\n\n"
             "### CRITICAL SMOOTHING RULES:\n"
-            "1. RECONSTRUCT PUNCTUATION: Use the JA_TEXT context to add periods, question marks, and exclamation points. Determine if a sentence ends in the current chunk or continues into the next.\n"
-            "2. ELLIPSES USAGE: If a character trails off at the end of a chunk or is interrupted, use ellipses (...).\n"
-            "3. PRONOUN & SUBJECT RECOVERY: Use the SPEAKER_ID to fix any missing subjects (I, You, He, She). Ensure gendered speech is consistent with the character's persona.\n"
-            "4. CAPITALIZATION: Correct the capitalization. Many chunks will start with lowercase words; fix them based on their position in the reconstructed sentence.\n"
-            "5. FLOW & TONE:\n"
-            "   - Ensure SPEAKER_00 (Rude Male) stays informal, punchy, and assertive.\n"
-            "   - Ensure SPEAKER_01 (Polite Sister) stays soft, grammatically precise, and respectful.\n"
-            "6. CONTINUITY: If a character starts a sentence in one segment and finishes it in the next, ensure the grammar and punctuation connect across the break.\n\n"
+            "1. RECONSTRUCT PUNCTUATION: Add periods, question marks, and exclamation points based on the JA_TEXT context.\n"
+            "2. CONTINUITY: If a sentence spans across Line X and Line Y, ensure the grammar connects. Use ellipses (...) at the end of Line X if it is an incomplete thought.\n"
+            "3. PRONOUN RECOVERY: Use SPEAKER_ID to fix missing subjects (I, You, He, She).\n"
+            "4. CAPITALIZATION: Fix capitalization based on the sentence's position.\n"
+            "5. FLOW & TONE: Ensure characters (Rude Male vs Polite Sister) maintain consistent voices.\n\n"
             "### OUTPUT RULES:\n"
             "- Return ONLY the final smoothed English lines in the format 'Line X: [Polished Translation]'.\n"
             "- You MUST return EXACTLY the same number of lines as provided.\n"
@@ -538,120 +555,115 @@ class TranscribeEngine:
 
     def _resegment_results(self, result: Dict, max_line_width: int, max_line_count: int, language: str = "ja") -> List[Dict]:
         """
-        A hybrid resegmenter that splits based on natural speech gaps (>0.5s), 
-        line width (42 chars), and line count (2 lines).
+        Precision 'Speaker-Aware' Resegmenter.
+        Prevents dialogue merging and ensures subtitles only appear when the specific speaker is active.
         """
-        if not result["segments"] or "words" not in result["segments"][0]:
-            return result["segments"]
+        if not result["segments"]: return []
 
-        # For CJK languages, max_line_width should be effectively smaller for Japanese text
-        # to prevent extremely long English translations later.
-        effective_width = max_line_width
-        if language in ["ja", "zh", "ko"]:
-            effective_width = min(max_line_width, 24)
-
+        effective_width = 24 if language == "ja" else max_line_width
         new_segments = []
-        subtitle_words: List[Dict] = []
-        subtitle_times: List[tuple] = []
-        
-        line_len = 0
-        line_count = 1
         punctuation = ("。", "！", "？", "!", "?", "…")
-        
-        def commit_block(words_to_add, times_to_add):
-            if not words_to_add or not times_to_add: return
-            
-            # Use actual word timings for start/end
-            start = times_to_add[0][0]
-            end = times_to_add[-1][1]
-            speaker = times_to_add[0][2]
-            
-            is_no_space = language in ["ja", "zh"]
-            if is_no_space:
-                text = "".join([w["word"] for w in words_to_add])
-            else:
-                text = " ".join([w["word"] for w in words_to_add]).replace("\n ", "\n")
-
-            if text.strip():
-                new_segments.append({"start": start, "end": end, "text": text, "speaker": speaker})
 
         for segment in result["segments"]:
-            speaker = segment.get("speaker", "UNKNOWN")
             words = segment.get("words", [])
+            # Initial speaker from segment level
+            current_speaker = segment.get("speaker", "UNKNOWN")
             
-            # If no words are aligned, use the segment's own text and times
+            buffer_words = []
+            line_count = 1
+            line_len = 0
+            
             if not words:
-                if segment["text"].strip():
+                if segment.get("text", "").strip():
                     new_segments.append({
-                        "start": segment["start"],
-                        "end": segment["end"],
-                        "text": segment["text"].strip(),
-                        "speaker": speaker
+                        "start": segment["start"], "end": segment["end"],
+                        "text": segment["text"].strip(), "speaker": current_speaker
                     })
                 continue
 
             for i, word in enumerate(words):
-                timing = word.copy()
-                word_text = timing["word"]
-                has_start = "start" in timing
-                has_end = "end" in timing
+                w_text = word["word"]
+                w_start = word.get("start")
+                w_end = word.get("end")
+                # Detect word-level speaker (added by diarization)
+                w_speaker = word.get("speaker", current_speaker)
                 
-                # Use word timing if available, else estimate relative to segment
-                # We use word-level timestamps to prevent snapping to the 30s block start.
-                w_start = timing.get("start")
-                w_end = timing.get("end")
-
-                # 1. Split Triggers
-                silence_gap = False
-                punc_trigger = any(p in word_text for p in punctuation)
+                # Triggers
+                is_punc = any(p in w_text for p in punctuation)
+                speaker_changed = (w_speaker != current_speaker and len(buffer_words) > 0)
                 
+                has_gap = False
                 if i < len(words) - 1:
-                    next_word = words[i+1]
-                    if has_end and "start" in next_word:
-                        gap = next_word["start"] - timing["end"]
-                        if gap > 1.0: silence_gap = True
+                    next_w = words[i+1]
+                    if w_end and next_w.get("start"):
+                        if (next_w["start"] - w_end) > 0.4: has_gap = True
+
+                word_stripped = w_text.strip()
+                needs_wrap = line_len > 0 and (line_len + len(word_stripped)) > effective_width
                 
-                # 2. Width Check
-                word_stripped = word_text.strip()
-                has_room = (line_len + len(word_stripped)) <= effective_width
-                
-                # 3. Decision Logic
-                if line_len > 0:
-                    should_split_block = (silence_gap or punc_trigger or line_count >= max_line_count)
+                # TRIGGER FLUSH: Punc, Gap, Max Lines, or SPEAKER CHANGE
+                if len(buffer_words) > 0 and (is_punc or has_gap or speaker_changed or (needs_wrap and line_count >= max_line_count)):
+                    # Determine start/end using only the words in THIS specific sub-block
+                    # Fallback to current word timing instead of segment start to prevent 'hanging'
+                    s_start = buffer_words[0].get("start", w_start if w_start else segment["start"])
+                    s_end = buffer_words[-1].get("end", w_start if w_start else segment["end"])
                     
-                    if should_split_block:
-                        commit_block(subtitle_words, subtitle_times)
-                        subtitle_words = []; subtitle_times = []; line_count = 1; line_len = 0
-                        timing["word"] = word_text.strip()
-                    elif not has_room:
-                        line_count += 1
-                        timing["word"] = "\n" + word_text.strip()
-                        line_len = len(word_text.strip())
+                    if language == "ja":
+                        s_text = "".join([w["word"] for w in buffer_words]).replace(" ", "")
                     else:
-                        line_len += len(word_text)
-                else:
-                    timing["word"] = word_text.strip()
-                    line_len = len(word_text.strip())
+                        s_text = " ".join([w["word"] for w in buffer_words]).replace("\n ", "\n")
+                    
+                    if s_text.strip():
+                        new_segments.append({"start": s_start, "end": s_end, "text": s_text.strip(), "speaker": current_speaker})
+                    
+                    buffer_words = []
+                    line_count = 1
+                    line_len = 0
+                    # Update active speaker tracking
+                    current_speaker = w_speaker
 
-                subtitle_words.append(timing)
+                # Wrap logic
+                if needs_wrap:
+                    word["word"] = "\n" + word_stripped
+                    line_count += 1
+                    line_len = len(word_stripped)
+                else:
+                    line_len += len(w_text)
                 
-                # CRITICAL: If a word has no timing, we MUST NOT snap to segment start.
-                # We use a very short placeholder based on previous word or segment start.
-                if has_start and has_end:
-                    subtitle_times.append((timing["start"], timing["end"], speaker))
-                else:
-                    prev_time = subtitle_times[-1][1] if subtitle_times else segment["start"]
-                    subtitle_times.append((prev_time, prev_time + 0.1, speaker))
+                buffer_words.append(word)
 
-        # Final block
-        commit_block(subtitle_words, subtitle_times)
-        
-        # Collision Detection: Prevent overlapping timestamps
+            # Final flush for segment
+            if buffer_words:
+                s_start = buffer_words[0].get("start", segment["start"])
+                s_end = buffer_words[-1].get("end", segment["end"])
+                if language == "ja":
+                    s_text = "".join([w["word"] for w in buffer_words]).replace(" ", "")
+                else:
+                    s_text = " ".join([w["word"] for w in buffer_words]).replace("\n ", "\n")
+                if s_text.strip():
+                    new_segments.append({"start": s_start, "end": s_end, "text": s_text.strip(), "speaker": current_speaker})
+
+        # Collision Guard
         for i in range(len(new_segments) - 1):
             if new_segments[i]["end"] > new_segments[i+1]["start"]:
                 new_segments[i]["end"] = new_segments[i+1]["start"]
 
         return new_segments
+
+    def _is_likely_song(self, text: str) -> bool:
+        """Heuristic to detect if a Japanese segment is likely a song/lyric or music hallucination."""
+        if not text: return False
+        # 1. Musical symbols
+        if any(char in text for char in ["♪", "♫", "〜", "~"]): return True
+        
+        # 2. Excessive repetition (common in music hallucinations)
+        if re.search(r'(.)\1{4,}', text): return True # 5+ identical characters
+        
+        # 3. Low character variety / High density
+        # Songs often produce long strings of repeated syllables
+        if len(text) > 30 and len(set(text)) < 8: return True
+        
+        return False
 
     def generate_srt(self, segments: List[Dict], output_path: str):
         """Converts internal segment list to standard SRT format."""
