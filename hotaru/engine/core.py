@@ -11,6 +11,7 @@ from typing import List, Dict, Any, Optional, Callable
 from hotaru.engine.translator import OllamaTranslator
 from hotaru.engine.subtitle_utils import generate_srt
 from hotaru.engine.audio_utils import isolate_vocals
+from janome.tokenizer import Tokenizer
 
 logger = logging.getLogger("HotaruEngine")
 
@@ -22,6 +23,7 @@ class TranscribeEngine:
                  ollama_host: str = "http://localhost:11434"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.compute_type = "float16" if self.device == "cuda" else "int8"
+        self.tokenizer = Tokenizer()
         
         # Local model path handling
         if model_size == "litagin/anime-whisper":
@@ -107,6 +109,13 @@ class TranscribeEngine:
             result = self.model.transcribe(audio, batch_size=16, language="ja", chunk_size=whisper_chunk_size)
             check_abort()
             
+            # 1.5 Morphological Tokenization (Janome)
+            # We insert spaces between grammatical boundaries so WhisperX can align to actual words.
+            log("🧪 Performing morphological tokenization for precision alignment...")
+            for seg in result["segments"]:
+                tokens = self.tokenizer.tokenize(seg["text"])
+                seg["text"] = " ".join([t.surface for t in tokens])
+
             # 2. Align
             log("═"*40)
             log("📏 PHASE 2: ALIGNMENT & DIARIZATION")
@@ -116,12 +125,9 @@ class TranscribeEngine:
             result = whisperx.align(result["segments"], model_a, metadata, audio, self.device, return_char_alignments=False)
             check_abort()
             
-            # Use raw model segments directly (Pure AI - No Manual Filtering)
-            segmented_ja = result["segments"]
-
             if timing_offset != 0:
                 log(f"⏱️ Applying manual timing offset: {timing_offset:+.3f}s")
-                for seg in segmented_ja:
+                for seg in result["segments"]:
                     seg["start"] += timing_offset; seg["end"] += timing_offset
                     if "words" in seg:
                         for w in seg["words"]:
@@ -133,8 +139,70 @@ class TranscribeEngine:
                 log("👥 Identifying speakers using Pyannote...")
                 diarize_segments = self.diarize_model(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
-                # Keep pointer synchronized with the model's final updated segments
-                segmented_ja = result["segments"]
+
+            # 4. Smart-Wrap (Morphological Chunking)
+            # We strictly enforce density limits but ONLY split at the boundaries defined by Janome.
+            log(f"📦 Performing morphological chunking (Max Width: {max_line_width}, Max Lines: {max_line_count})...")
+            segmented_ja = []
+            for seg in result["segments"]:
+                words = seg.get("words", [])
+                speaker = seg.get("speaker", "UNKNOWN")
+                
+                if not words:
+                    if seg.get("text", "").strip():
+                        segmented_ja.append({
+                            "start": seg["start"], "end": seg["end"],
+                            "text": seg["text"].strip().replace(" ", ""), # Remove Janome spaces for final output
+                            "speaker": speaker
+                        })
+                    continue
+                
+                current_buffer = []
+                current_len = 0
+                line_count = 1
+                
+                for w in words:
+                    w_text = w["word"].strip()
+                    w_len = len(w_text)
+                    
+                    # If adding this word exceeds the width
+                    if current_len + w_len > max_line_width:
+                        if line_count < max_line_count:
+                            # Wrap to next line within same segment
+                            line_count += 1
+                            current_len = w_len
+                            current_buffer.append(w)
+                        else:
+                            # Density limit reached. Flush the buffer into a new segment.
+                            if current_buffer:
+                                s_start = current_buffer[0].get("start", seg["start"])
+                                s_end = current_buffer[-1].get("end", seg["end"])
+                                # Safety fallbacks for unaligned words
+                                if s_start is None: s_start = seg["start"]
+                                if s_end is None: s_end = seg["end"]
+                                
+                                s_text = "".join([bw["word"] for bw in current_buffer]).replace(" ", "")
+                                segmented_ja.append({
+                                    "start": s_start, "end": s_end, "text": s_text, "speaker": speaker
+                                })
+                            current_buffer = [w]
+                            current_len = w_len
+                            line_count = 1
+                    else:
+                        current_len += w_len
+                        current_buffer.append(w)
+                
+                if current_buffer:
+                    s_start = current_buffer[0].get("start", seg["start"])
+                    s_end = current_buffer[-1].get("end", seg["end"])
+                    if s_start is None: s_start = seg["start"]
+                    if s_end is None: s_end = seg["end"]
+                    
+                    s_text = "".join([bw["word"] for bw in current_buffer]).replace(" ", "")
+                    segmented_ja.append({
+                        "start": s_start, "end": s_end, "text": s_text, "speaker": speaker
+                    })
+            check_abort()
 
             # 5. VRAM Reset
             log("═"*40)
