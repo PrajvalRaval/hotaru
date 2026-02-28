@@ -133,9 +133,16 @@ class TranscribeEngine:
                 diarize_segments = self.diarize_model(audio)
                 result = whisperx.assign_word_speakers(diarize_segments, result)
 
-            # 4. Resegment
-            log(f"📦 Resegmenting for subtitles (Width: {max_line_width}, Lines: {max_line_count})...")
-            segmented_ja = resegment_results(result, max_line_width, max_line_count, language="ja")
+            # 4. Extract Segments (Bypassing Custom Resegmentation)
+            log("📦 Extracting WhisperX aligned segments...")
+            segmented_ja = []
+            for seg in result["segments"]:
+                segmented_ja.append({
+                    "start": seg["start"],
+                    "end": seg["end"],
+                    "text": seg["text"].strip(),
+                    "speaker": seg.get("speaker", "UNKNOWN")
+                })
             check_abort()
 
             # 5. VRAM Reset
