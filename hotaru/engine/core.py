@@ -1,0 +1,195 @@
+import os
+import torch
+import whisperx
+import gc
+import time
+import logging
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Callable
+
+from hotaru.engine.translator import OllamaTranslator
+from hotaru.engine.subtitle_utils import resegment_results, is_likely_song, generate_srt
+
+logger = logging.getLogger("HotaruEngine")
+
+class TranscribeEngine:
+    """Core engine orchestrating WhisperX and Ollama."""
+    
+    def __init__(self, model_size: str = "kotoba-tech/kotoba-whisper-v2.0-faster", 
+                 hf_token: Optional[str] = None, 
+                 ollama_host: str = "http://localhost:11434"):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.compute_type = "float16" if self.device == "cuda" else "int8"
+        
+        # Local model path handling
+        if model_size == "litagin/anime-whisper":
+            model_size = os.path.join("models", "anime-whisper-ct2")
+            if not os.path.exists(model_size):
+                model_size = "kotoba-tech/kotoba-whisper-v2.0-faster"
+        
+        self.model_size = model_size
+        self.translator = OllamaTranslator(host=ollama_host)
+        
+        # VAD Config
+        vad_options = {
+            "vad_onset": 0.50,
+            "vad_offset": 0.363,
+            "min_silence_duration_ms": 1000,
+            "speech_pad_ms": 400
+        }
+        
+        self.model = whisperx.load_model(
+            model_size, self.device, compute_type=self.compute_type,
+            vad_method="silero", vad_options=vad_options
+        )
+
+        self.diarize_model = None
+        if hf_token:
+            try:
+                self.diarize_model = whisperx.diarize.DiarizationPipeline(
+                    model_name='pyannote/speaker-diarization-3.1', 
+                    token=hf_token, device=self.device
+                )
+            except Exception as e:
+                logger.warning(f"Diarization load failed: {e}")
+
+    def get_free_vram(self) -> float:
+        if self.device == "cuda":
+            torch.cuda.empty_cache()
+            gc.collect()
+            v_free, _ = torch.cuda.mem_get_info()
+            return v_free / 1024**3
+        return 0.0
+
+    def process_video(self, video_path: str, ollama_model: str = "qwen3:30b", 
+                      log_callback: Optional[Callable[[str], None]] = None, 
+                      timing_offset: float = 0.0, chunk_size: int = 25, 
+                      tolerance_pct: int = 5, cancel_check: Optional[Callable[[], bool]] = None, 
+                      max_line_width: int = 42, max_line_count: int = 2, 
+                      align_model: Optional[str] = None, whisper_chunk_size: int = 30) -> List[Dict[str, Any]]:
+        
+        def log(msg: str):
+            ts = datetime.now().strftime("%H:%M:%S")
+            formatted = f"[{ts}] INFO: {msg}"
+            if log_callback: log_callback(formatted)
+            else: logger.info(formatted)
+
+        def check_abort():
+            time.sleep(0.1)
+            if cancel_check and cancel_check():
+                log("🚫 Task cancellation requested.")
+                raise InterruptedError("Task cancelled by user.")
+
+        try:
+            # 0. Pre-emptive Ollama Unload
+            try:
+                if ollama_model: self.translator.client.generate(model=ollama_model, keep_alive=0)
+            except: pass
+
+            log("═"*40)
+            log(f"🎧 PHASE 1: TRANSCRIPTION - {os.path.basename(video_path)}")
+            log("═"*40)
+            
+            # 1. Transcribe
+            log(f"🎬 Loading audio from video...")
+            audio = whisperx.load_audio(video_path)
+            log(f"🗣️ Transcribing Japanese (VAD Onset: 0.50, Chunk: {whisper_chunk_size}s)...")
+            result = self.model.transcribe(audio, batch_size=16, language="ja", chunk_size=whisper_chunk_size)
+            check_abort()
+            
+            # 2. Align
+            log("═"*40)
+            log("📏 PHASE 2: ALIGNMENT & DIARIZATION")
+            log("═"*40)
+            log(f"📐 Aligning phonemes using model: {align_model or 'default-ja'}...")
+            model_a, metadata = whisperx.load_align_model(language_code="ja", device=self.device, model_name=align_model)
+            result = whisperx.align(result["segments"], model_a, metadata, audio, self.device, return_char_alignments=False)
+            check_abort()
+            
+            if timing_offset != 0:
+                log(f"⏱️ Applying manual timing offset: {timing_offset:+.3f}s")
+                for seg in result["segments"]:
+                    seg["start"] += timing_offset; seg["end"] += timing_offset
+                    if "words" in seg:
+                        for w in seg["words"]:
+                            if "start" in w: w["start"] += timing_offset
+                            if "end" in w: w["end"] += timing_offset
+
+            # 3. Diarize
+            if self.diarize_model:
+                log("👥 Identifying speakers using Pyannote...")
+                diarize_segments = self.diarize_model(audio)
+                result = whisperx.assign_word_speakers(diarize_segments, result)
+
+            # 4. Resegment
+            log(f"📦 Resegmenting for subtitles (Width: {max_line_width}, Lines: {max_line_count})...")
+            segmented_ja = resegment_results(result, max_line_width, max_line_count, language="ja")
+            check_abort()
+
+            # 5. VRAM Reset
+            log("═"*40)
+            log("☢️ PHASE 3: NUCLEAR VRAM RESET")
+            log("═"*40)
+            log("🧹 WhisperX pipeline complete. Purging GPU memory...")
+            if hasattr(self, 'model'): del self.model
+            if 'model_a' in locals(): del model_a
+            if self.diarize_model: del self.diarize_model; self.diarize_model = None
+            gc.collect()
+            if self.device == "cuda":
+                torch.cuda.empty_cache(); torch.cuda.ipc_collect()
+                time.sleep(1)
+                v_free, _ = torch.cuda.mem_get_info()
+                log(f"✅ VRAM Reset Complete. Free VRAM: {v_free/1024**3:.2f}GB")
+
+            # 6. Translate
+            log("═"*40)
+            log("🌎 PHASE 4: OLLAMA TRANSLATION")
+            log("═"*40)
+            log(f"🌍 Translating {len(segmented_ja)} segments using {ollama_model}...")
+            translated_segments = []
+            eff_chunk_size = chunk_size if chunk_size > 0 else len(segmented_ja)
+            num_chunks = (len(segmented_ja) + eff_chunk_size - 1) // eff_chunk_size
+            
+            for i in range(0, len(segmented_ja), eff_chunk_size):
+                check_abort()
+                chunk = segmented_ja[i:i + eff_chunk_size]
+                chunk_num = i // eff_chunk_size + 1
+                
+                total_chars = sum(len(s.get("text", "")) for s in chunk)
+                log(f"🌎 Translating chunk {chunk_num}/{num_chunks} ({len(chunk)} segments, ~{total_chars} chars)...")
+                
+                # Filter songs
+                sub_chunk = [s for s in chunk if not is_likely_song(s.get("text", ""))]
+                
+                if sub_chunk:
+                    translated_texts = self.translator.translate_chunk(
+                        sub_chunk, ollama_model, tolerance_pct, cancel_check, log
+                    )
+                    
+                    ptr = 0
+                    for seg in chunk:
+                        if is_likely_song(seg.get("text", "")): seg["translated_text"] = ""
+                        else: seg["translated_text"] = translated_texts[ptr]; ptr += 1
+                else:
+                    for seg in chunk: seg["translated_text"] = ""
+                
+                translated_segments.extend(chunk)
+            
+            # 7. Polish
+            log("═"*40)
+            log("🪄 PHASE 5: AI POLISH")
+            log("═"*40)
+            log(f"🪄 Starting script refinement for {len(translated_segments)} lines...")
+            polished_texts = self.translator.smooth_translation(
+                translated_segments, ollama_model, cancel_check, log
+            )
+            for seg, polished in zip(translated_segments, polished_texts):
+                seg["translated_text"] = polished
+            
+            log("✅ AI Polish complete.")
+
+            return translated_segments
+            
+        finally:
+            try: self.translator.client.generate(model=ollama_model, keep_alive=0)
+            except: pass

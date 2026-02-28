@@ -8,7 +8,9 @@ To provide the highest quality Japanese-to-English subtitles for anime using a h
 ## 🛠️ Architectural Mandates
 
 ### 1. Resource & Memory Orchestration
-- **Nuclear VRAM Reset:** Between transcription (WhisperX) and translation (Ollama), ALL heavy models MUST be explicitly deleted. Calls to `torch.cuda.empty_cache()` and `torch.cuda.ipc_collect()` must be performed to ensure a clean slate for the LLM.
+- **Strategic Heartbeats:** Use `run_every` ONLY for independent hardware monitoring and individual task progress tracking. These MUST remain in separate fragments to avoid WebSocket flood.
+- **UI Preservation:** Never modify or refactor already working UI components unless explicitly prompted by the user.
+- **Nuclear VRAM Reset:** Between transcription (WhisperX) and translation (Ollama), ALL heavy models MUST be explicitly deleted.
 - **Fragmented UI Updates:** Global `st.rerun()` heartbeats are FORBIDDEN. All real-time telemetry (VRAM/RAM/Progress) MUST use `@st.fragment` to refresh isolated UI components, preventing script-wide re-execution and memory leaks.
 
 ### 2. Subtitle Timing & UI Dynamics
@@ -24,10 +26,10 @@ To provide the highest quality Japanese-to-English subtitles for anime using a h
 - **Song Detection:** Utilize a text-based heuristic (symbols, repetition, density) combined with **0.50 VAD Onset** to proactively filter music and opening/ending themes.
 
 ### 4. Model Specifics (Anime-Whisper)
-- **Automatic Patching:** The `convert_anime_whisper.py` script MUST automatically patch the CTranslate2 `config.json` to use **128 Mel bins** (Whisper v3 requirement) and ensure all required preprocessor metadata is downloaded.
+- **Automatic Patching:** The `scripts/convert_anime_whisper.py` script MUST automatically patch the CTranslate2 `config.json` to use **128 Mel bins** (Whisper v3 requirement) and ensure all required preprocessor metadata is downloaded.
 
 ### 5. Mandatory Syntax Check
-- **Zero-Tolerance for IndentationErrors:** After ANY modification to Python source files, the `./check_syntax.sh` script MUST be executed to verify structural integrity.
+- **Zero-Tolerance for IndentationErrors:** After ANY modification to Python source files, the `scripts/check_syntax.sh` script MUST be executed to verify structural integrity.
 - **Pre-Execution Check:** Never finish a task without confirming all files pass the syntax check.
 
 ## 📝 Engineering Standards
