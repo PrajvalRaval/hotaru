@@ -1,5 +1,6 @@
 import os
 import torch
+import numpy as np
 import whisperx
 import gc
 import time
@@ -15,9 +16,15 @@ from janome.tokenizer import Tokenizer
 
 logger = logging.getLogger("HotaruEngine")
 
+# Mandatory TF32 enable for RTX 3090/4090 performance
+if torch.cuda.is_available():
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
 class TranscribeEngine:
     """Core engine orchestrating WhisperX and Ollama."""
     def __init__(self, model_size: str = "kotoba-tech/kotoba-whisper-v2.0-faster", 
+                 hf_token: Optional[str] = None,
                  ollama_host: str = "http://localhost:11434"):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.compute_type = "float16" if self.device == "cuda" else "int8"
@@ -43,6 +50,38 @@ class TranscribeEngine:
             vad_method="silero", vad_options=vad_options
         )
 
+        self.diarize_model = None
+        if hf_token:
+            try:
+                # Fix for PyTorch 2.6+ weights_only security restriction
+                if hasattr(torch.serialization, 'add_safe_globals'):
+                    try:
+                        from pyannote.audio.core.task import Specifications, Problem, Resolution
+                        from pyannote.core import Annotation, Segment
+                        torch.serialization.add_safe_globals([
+                            torch.torch_version.TorchVersion,
+                            Specifications,
+                            Problem,
+                            Resolution,
+                            Annotation,
+                            Segment,
+                            np.core.multiarray._reconstruct,
+                            np.dtype,
+                            np.ndarray
+                        ])
+                    except Exception as ge:
+                        logger.warning(f"Note: Could not allow-list all diarization globals: {ge}")
+                
+                from whisperx.diarize import DiarizationPipeline
+                self.diarize_model = DiarizationPipeline(
+                    model_name='pyannote/speaker-diarization-3.1', 
+                    use_auth_token=hf_token, 
+                    device=self.device
+                )
+                logger.info("✅ Diarization pipeline loaded successfully.")
+            except Exception as e:
+                logger.warning(f"❌ Diarization load failed: {e}. Check HF_TOKEN if using gated models.")
+
     def get_free_vram(self) -> float:
         if self.device == "cuda":
             torch.cuda.empty_cache()
@@ -58,6 +97,7 @@ class TranscribeEngine:
                       max_line_width: int = 42, max_line_count: int = 2,
                       align_model: Optional[str] = None, whisper_chunk_size: int = 30,
                       enable_word_snapping: bool = False,
+                      enable_diarization: bool = False,
                       srt_output_path: Optional[str] = None) -> List[Dict[str, Any]]:        
         def log(msg: str):
             # The global logger now handles [HH:MM:SS] LEVEL prefixes
@@ -209,6 +249,29 @@ class TranscribeEngine:
                             if "start" in w: w["start"] += timing_offset
                             if "end" in w: w["end"] += timing_offset
 
+            # 2.5 Diarization
+            if enable_diarization and self.diarize_model:
+                log("═"*40)
+                log("👥 PHASE 2.5: DIARIZATION")
+                log("═"*40)
+                log("🗣️ Assigning speaker labels to segments using Pyannote...")
+                try:
+                    diarize_segments = self.diarize_model(audio)
+                    
+                    # Ensure assign_word_speakers has both segments and words
+                    result = whisperx.assign_word_speakers(diarize_segments, result)
+                    check_abort()
+                    
+                    # --- DEBUG EXPORT: DIARIZED ---
+                    try:
+                        diarized_path = os.path.join(OUTPUT_DIR, f"{base_name}_diarized.srt")
+                        generate_srt(result["segments"], diarized_path, include_speaker=True)
+                        log(f"💾 Saved diarized SRT with speaker tags: {os.path.basename(diarized_path)}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save diarized debug SRT: {e}")
+                except Exception as e:
+                    log(f"⚠️ Diarization failed: {e}.")
+
             # 5. VRAM Reset
             log("═"*40)
             log("☢️ PHASE 3: NUCLEAR VRAM RESET")
@@ -216,6 +279,7 @@ class TranscribeEngine:
             log("🧹 WhisperX pipeline complete. Purging GPU memory...")
             if hasattr(self, 'model'): del self.model
             if 'model_a' in locals(): del model_a
+            if self.diarize_model: del self.diarize_model; self.diarize_model = None
             gc.collect()
             if self.device == "cuda":
                 torch.cuda.empty_cache(); torch.cuda.ipc_collect()
@@ -288,7 +352,7 @@ class TranscribeEngine:
                 # Incremental Save: Write current progress to SRT file
                 if srt_output_path:
                     try:
-                        generate_srt(translated_segments, srt_output_path)
+                        generate_srt(translated_segments, srt_output_path, include_speaker=enable_diarization)
                     except Exception as e:
                         logger.warning(f"Failed to perform incremental save: {e}")
             

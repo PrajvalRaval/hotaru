@@ -44,7 +44,7 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
         def cancel_check():
             return name not in all_tasks or all_tasks[name].get("status") != "Processing" or shutdown_event.is_set()
 
-        eng = TranscribeEngine(model_size=config["model_size"], ollama_host=config["ollama_host"])
+        eng = TranscribeEngine(model_size=config["model_size"], hf_token=config.get("hf_token"), ollama_host=config["ollama_host"])
         
         # Pre-calculate target SRT path for streaming updates
         srt_name = os.path.splitext(name)[0] + ".srt"
@@ -60,6 +60,7 @@ def run_engine_thread(name, task_data, all_tasks, config, status_container, shut
             align_model=config["align_model"],
             whisper_chunk_size=config["whisper_chunk"],
             enable_word_snapping=config.get("word_snapping", False),
+            enable_diarization=config.get("enable_diarization", False),
             srt_output_path=srt_path
         )
         

@@ -105,6 +105,7 @@ def render_task_card(name):
                 
                 config = {
                     "model_size": st.session_state.model_size_val,
+                    "hf_token": st.session_state.get("hf_token_input"),
                     "ollama_host": st.session_state.ollama_host,
                     "ollama_model": st.session_state.last_model,
                     "timing_offset": st.session_state.timing_offset_slider,
@@ -112,7 +113,9 @@ def render_task_card(name):
                     "max_lines": st.session_state.max_line_count_input,
                     "align_model": st.session_state.align_model_input,
                     "whisper_chunk": st.session_state.whisper_chunk_size_input,
-                    "word_snapping": st.session_state.word_snapping_toggle
+                    "word_snapping": st.session_state.word_snapping_toggle,
+                    "enable_diarization": st.session_state.diarization_toggle,
+                    "hf_token": st.session_state.get("hf_token_input")
                 }
                 t = threading.Thread(target=run_engine_thread, args=(name, task, st.session_state.tasks, config, None, st.session_state.SHUTDOWN_EVENT), daemon=False)
                 add_script_run_ctx(t); t.start()

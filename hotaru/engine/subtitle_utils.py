@@ -3,14 +3,21 @@ import srt
 from datetime import timedelta
 from typing import List, Dict
 
-def generate_srt(segments: List[Dict], output_path: str):
+def generate_srt(segments: List[Dict], output_path: str, include_speaker: bool = False):
     """Converts internal segment list to standard SRT format."""
     srt_segments = []
     for i, seg in enumerate(segments):
         content = seg.get("translated_text", seg["text"])
         if not content or content.strip() == "": continue
         
-        content = re.sub(r'\[SPEAKER_\d+\]\s*', '', content)
+        if not include_speaker:
+            content = re.sub(r'\[SPEAKER_\d+\]\s*', '', content)
+        else:
+            # If speaker info exists and isn't already in content, prepend it
+            speaker = seg.get("speaker")
+            if speaker and f"[{speaker}]" not in content:
+                content = f"[{speaker}] {content}"
+        
         content = re.sub(r'^(?:Line\s*)?\d+\s*[:\.]\s*', '', content, flags=re.IGNORECASE)
         
         srt_segments.append(srt.Subtitle(

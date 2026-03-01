@@ -55,10 +55,22 @@ def render_sidebar(ollama_models):
             st.text_input("📐 Alignment Model", value="jonatasgrosman/wav2vec2-large-xlsr-53-japanese", key="align_model_input")
             st.number_input("✂️ Whisper Chunk Size (s)", min_value=1, max_value=60, value=30, key="whisper_chunk_size_input")
             st.slider("⏱️ Timing Offset (s)", -2.0, 2.0, 0.0, 0.05, key="timing_offset_slider")
-            
-            st.markdown("---")
-            st.markdown("### 🧪 Experimental")
+
+        with st.expander("🧪 Experimental", expanded=False):
             st.toggle("⚡ Word-Based Snapping", value=False, help="Strictly snap subtitles to word bounding boxes. Prevents subtitles from stretching across silences.", key="word_snapping_toggle")
+
+            st.toggle("👥 Enable Diarization", value=False, help="Identify and label different speakers in the audio. Requires a Hugging Face token for Pyannote models.", key="diarization_toggle")
+
+            if st.session_state.get("diarization_toggle", False):
+                # Load default token from environment
+                hf_token_env = os.getenv("HF_TOKEN", "")
+                st.text_input(
+                    "🔑 Hugging Face Token", 
+                    value=hf_token_env,
+                    type="password", 
+                    help="Get your token from hf.co/settings/tokens. Required if models are gated.", 
+                    key="hf_token_input"
+                )
 
         with st.expander("🌎 Translation", expanded=False):
             st.text_input("🏠 Ollama Host", value="http://localhost:11434", key="ollama_host")

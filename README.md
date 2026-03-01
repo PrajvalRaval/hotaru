@@ -1,5 +1,7 @@
 # 🏯 Hotaru (蛍) — Professional Japanese-to-English Anime Subtitling Engine
 
+☢️ CREATOR NOTE: Open-Source Transcription is not there yet. Alignment issues are always there, Diarization does not work and WhisperX defaults to 30 Seconds blobs. So this project can be used for it's pipeline, but don't  expect professional quality subs. Thanks.
+
 ![Hotaru Dashboard - AI Anime Subtitle Generator](Screenshot.png)
 
 ### 🚀 High-Performance Local AI Pipeline for Precision Subtitling
